@@ -8,7 +8,7 @@ def simulate(verbose=True):
     index = args.instance_index
     
     instance_path = f"instances/instance{index}.json"
-    n, k, confidence, mus, A, w_star, T_stars = read_instance_from_json(instance_path)
+    n, k, confidence, mus, A, w_star, T_star = read_instance_from_json(instance_path)
     
     mode = {
         'use_optimized_p': args.use_optimized_p,

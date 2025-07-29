@@ -123,3 +123,11 @@ def mean_of_columns(list_of_lists):
             means.append(None)  
 
     return means
+
+
+def gaussian_kl(mu1, mu2):
+    return (mu1 - mu2)**2 / 2
+
+
+def categorical_kl(p, q):
+    return sum([p[i] * np.log(p[i]/q[i]) for i in range(len(p))])

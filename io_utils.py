@@ -4,7 +4,7 @@ import argparse
 import numpy as np
 
 def get_arguments():
-    parser = argparse.ArgumentParser(description="Parse variables for main1.py")
+    parser = argparse.ArgumentParser(description="Parse variables simulate")
     
     parser.add_argument("--Algorithm", type=str, required=False, default='STS', help="Description for var1 (e.g., a string variable)")
     parser.add_argument("--instance_index", type=int, required=False, default=0)
@@ -13,6 +13,14 @@ def get_arguments():
     parser.add_argument("--average_points_played", type=bool, required=False, default=False) 
     parser.add_argument("--average_w", type=bool, required=False, default=False)
     parser.add_argument("--stopping_rule", type=str, required=False, default='d')
+    
+    return parser.parse_args()
+
+
+def get_optimization_arguments():
+    parser = argparse.ArgumentParser(description="Parse variables for optimization")
+    
+    parser.add_argument("--instance_index", type=int, required=False, default=0)
     
     return parser.parse_args()
 
