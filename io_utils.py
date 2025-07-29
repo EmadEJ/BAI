@@ -17,31 +17,29 @@ def get_arguments():
     return parser.parse_args()
 
 
-def add_instance_to_json(n, k, delta, contexts, means, w_star, T_star, file_path = 'instance1.json'):
-    contexts_list = contexts.tolist()
-    means_list = means.tolist()
+def add_instance_to_json(n, k, confidence, A, mus, w_star, T_star, file_path = None):
+    DIR_PATH = "instances/"
+    if file_path is None:
+        file_path = f"{DIR_PATH}instance{len(Path(DIR_PATH).glob('*.json'))}.json"
+    else:
+        file_path = DIR_PATH + file_path
+
+    A_list = A.tolist()
+    mus_list = mus.tolist()
     w_star_list = w_star.tolist()
 
     instance = {
         "n": n,
         "k": k,
-        "delta": delta,
-        "means": means_list,
-        "contexts": contexts_list,
+        "confidence": confidence,
+        "mus": mus_list,
+        "A": A_list,
         "w_star": w_star_list,
         "T_star": T_star
     }
-    
-    try:
-        with open(file_path, 'r') as file:
-            data = json.load(file)
-    except FileNotFoundError:
-        data = []
-    
-    data.append(instance)
-    
+
     with open(file_path, 'w') as file:
-        json.dump(data, file, indent=4)
+        json.dump(instance, file, indent=4)
 
 
 def read_instance_from_json(file_path):
@@ -51,9 +49,9 @@ def read_instance_from_json(file_path):
             return (
                 instance["n"],
                 instance["k"],
-                instance["delta"],
-                np.array(instance["means"]),
-                np.array(instance["contexts"]),
+                instance["confidence"],
+                np.array(instance["mus"]),
+                np.array(instance["A"]),
                 np.array(instance["w_star"]),
                 instance["T_star"],
             )

@@ -5,45 +5,44 @@ from utils import *
 
 class Environment:
     
-    def __init__(self, means, algorithm, n, k, delta, contexts=None, mode = {'use_optimized_p': False, 'average_w': False, 'average_points_played': False}, stopping_rule = 'd_stopping_rule'):
+    def __init__(self, mus, A, algorithm, n, k, confidence, mode = {'use_optimized_p': False, 'average_w': False, 'average_points_played': False}, stopping_rule = 'd_stopping_rule'):
 
-        self.contexts = contexts
-        self.algorithm = algorithm  
-        self.means = means
+        self.algorithm = algorithm
+        self.mus = mus  # mean reward of each context
+        self.A = A  # context given arm probabilty matrix
         self.n = n
         self.k = k
         self.T = 0
-        self.delta = delta
-        self.samples = np.random.normal(loc=0, scale=1, size=1000000) 
+        self.confidence = confidence
+        self.samples = np.random.normal(loc=0, scale=1, size=1000000)  # sample noise at each arm pull
         self.mode = mode
         
-        self.mus = np.dot(self.contexts, self.means)
-        self.best_arm = np.argmax(self.mus)
-        self.delta_hat = self.mus[self.best_arm] - self.mus
+        self.means = np.dot(self.A, self.mus)
+        self.best_arm = np.argmax(self.means)
+        self.delta = self.means[self.best_arm] - self.means
         
         self.optimal_W, self.T_star = self.optimal_weight()
         
-        # self.T_star *= np.sum(self.optimal_W)
-        self.T_star = 0.5/self.T_star
-        # self.optimal_W /= np.sum(self.optimal_W)
+        self.T_star = 0.5 / self.T_star  # NOTE: why 0.5??
         
         self.mu_hats = []
+        self.A_hat = []
         self.w_s = []
         self.N_times_seens = []
         
-        self.log_period = 20 #every 20 iteration save the data of the arms played up to now and optimal w
+        self.log_period = 20  # every 20 iteration save the data of the arms played up to now and optimal w
         
-        self.stopping_rule = stopping_rule #for c-tracking 
+        self.stopping_rule = stopping_rule  # for c-tracking 
        
     def optimal_weight(self):
+        # TODO: this should change for unkonwn A case. and should be moved to algorithms
         
-        delta = self.delta_hat
+        delta = self.delta
         i_star = self.best_arm
 
-
         lambda_var = cp.Variable(self.n, nonneg=True)  # Weights for convex combination
-        w = self.contexts.T @ lambda_var  # w is a convex combination of rows of A
-        t = cp.Variable() 
+        w = self.A.T @ lambda_var  # w is a convex combination of rows of A
+        t = cp.Variable()
 
         constraints = [cp.sum(lambda_var) == 1]  
         
@@ -51,18 +50,15 @@ class Environment:
         
         
         for i in range(self.n):
-            if i == i_star: #constraints are for non-optimal arms
+            if i == i_star:  # constraints are for non-optimal arms
                 continue
 
-            middle = cp.sum([(self.contexts[i, j] - self.contexts[i_star, j])**2 * cp.inv_pos(w[j]) for j in range(self.k)])
+            middle = cp.sum([(self.A[i, j] - self.A[i_star, j])**2 * cp.inv_pos(w[j]) for j in range(self.k)])
             constraints.append(t >= middle / (delta[i] ** 2))
 
         objective = cp.Minimize(t)
         
-
         problem = cp.Problem(objective, constraints)
-        
-        
         
         try:
             problem.solve()
@@ -78,18 +74,18 @@ class Environment:
         return w.value, t.value 
 
     def loop(self):
-        if self.algorithm == 'STS': #Seperator Track and Stop
+        if self.algorithm == 'STS': #Seperator Track and Stop            
+            alg = STS(self.n, self.k, self.confidence, self.A, self.mode)  # shouldn't get A
+            self.T = alg.Initialization_Phase(self.mus, self.samples)
             
-            alg = STS(self.n, self.k, self.delta, self.contexts, self.mode)
-            self.T = alg.Initialization_Phase(self.means, self.samples)
-            
-            print("initialization finished with ",self.T," rounds")
+            print(f"initialization finished with {self.T} rounds")
             
             while alg.Stopping_Rule():
+                # print(self.T)
                 # Select an action using the algorithm
                 action = alg.G_Tracking()
-                post_action = hidden_action_sampler(self.contexts[action])
-                reward = self.samples[self.T] + self.means[post_action]
+                post_action = hidden_action_sampler(self.A[action])
+                reward = self.samples[self.T] + self.mus[post_action]
                 alg.update(action, post_action, reward)
     
                 self.T += 1
@@ -102,10 +98,9 @@ class Environment:
                     _, actions_mu_hat, _ = alg.best_empirical_arm_calculator()
 
                     self.mu_hats.append(actions_mu_hat.tolist())
-
                     self.N_times_seens.append(alg.N_times_seen.tolist())
                 
             best_arm, _, _ = alg.best_empirical_arm_calculator()
-            print("number of failed optimization rounds is ", alg.optimization_failed_number_of_rounds)
+            print(f"number of failed optimization rounds is {alg.optimization_failed_number_of_rounds}")
         
         return best_arm, self.mu_hats, self.N_times_seens, self.w_s, self.T
