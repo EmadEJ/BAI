@@ -20,7 +20,9 @@ def get_arguments():
 def get_optimization_arguments():
     parser = argparse.ArgumentParser(description="Parse variables for optimization")
     
-    parser.add_argument("--instance_index", type=int, required=False, default=0)
+    parser.add_argument("--instance_index", type=int, required=False, default=None)
+    parser.add_argument("--experiment_cnt", type=int, required=False, default=None)
+    parser.add_argument("--name", type=str, required=False, default="")
     
     return parser.parse_args()
 
