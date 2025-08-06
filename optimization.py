@@ -5,9 +5,11 @@ from tqdm.contrib import itertools
 from itertools import product
 from utils import *
 from io_utils import *
-import matplotlib.pyplot as plt
+from scipy.optimize import minimize, Bounds, LinearConstraint
+import plotly.express as px
 
-EPSILON = 1e-4  # used for checking whether the optimization was good enough
+TOL = 1e-4  # used for checking whether the optimization was good enough
+
 
 def best_arm(mu, A):
     means = np.dot(A, mu)
@@ -202,7 +204,68 @@ def coordinate_descent(mu, A, w, iters=10, verbose=True, lr=0.01):
     # plt.show()
     
     return obj_star, mu_star, A_star
+
+
+def optimize_solved_mu(mu, A, w, verbose=True):
+    n, k = A.shape
+    i_star, _ = best_arm(mu, A)
+    N_A = w
+    N_Z = np.dot(A.T, w)
     
+    def solved_mu_objective(A_p_list, s):  # assumes gaussian
+        A_p = np.array(A_p_list).reshape((n, k))
+        
+        result = 0
+        for i in range(n):
+            result += N_A[i] * categorical_kl(A[i], A_p[i])
+        
+        denom = 0
+        for j in range(k):
+            denom += (A_p[i_star][j] - A_p[s][j])**2 / N_Z[j]
+            
+        delta = np.dot(A_p[i_star], mu) - np.dot(A_p[s], mu) 
+        result += (delta**2 / (2*denom) if denom != 0 else np.inf)
+
+        return result
+    
+    # distribution constraints
+    mat = np.zeros((n, n * k))
+    for i in range(n):
+        for j in range(k):
+            mat[i][i*k + j] = 1
+    
+    constraints = LinearConstraint(mat, [1.0 for _ in range(n)], [1.0 for _ in range(n)])
+    bounds = Bounds([1e-6 for _ in range(n * k)], [1.0 for _ in range(n * k)])
+    
+    obj_star = np.inf
+    mu_star, A_star = None, None
+    for s in range(n):
+        if s == i_star:
+            continue
+
+        result = minimize(
+            solved_mu_objective, 
+            x0=np.reshape(A, (n*k)).tolist(), 
+            args=(s), 
+            bounds=bounds, 
+            constraints=constraints,
+            method="COBYQA"
+        )
+        A_p = np.array(result.x).reshape((n, k))
+        mu_p = optimal_mu(mu, A, w, A_p, s)
+        obj = objective(mu, A, optimal_mu(mu, A, w, A_p, s), A_p, w, np.dot(A.T, w))
+        
+        if np.abs(result.fun - obj) > 1e-6:
+            print("something fishy going on")
+            print(obj, result.fun)
+        
+        if obj < obj_star:
+            obj_star = obj
+            mu_star = mu_p
+            A_star = A_p
+
+    return obj_star, mu_star, A_star
+
 
 def optimal_w(mu, A, method="grid_seach"):
     pass
@@ -246,8 +309,14 @@ def create_testset(n, k, cnt, output_path="instances/opt_testset.json"):
     return testset
 
 
-def test_method(n, k, experiment_cnt=10, testset_path="instances/opt_testset.json", name=""):
+def test_method(n, k, name="", experiment_cnt=10, rep=1, testset_path="instances/opt_testset.json"):
+    ALGS = {
+        "coordinate": coordinate_descent,
+        "solved_mu": optimize_solved_mu,
+        "": fast_grid_search
+    }
     output_path=f"results/opt_{name}.txt"
+    optimization_alg: function = ALGS[name]
     
     with open(testset_path, 'r') as F:
         testset = json.load(F)
@@ -258,7 +327,7 @@ def test_method(n, k, experiment_cnt=10, testset_path="instances/opt_testset.jso
     with open(output_path, 'w') as F:
         suboptimal_gaps = {}
         fail_cnt = 0
-        for iter in tqdm(range(experiment_cnt)):
+        for iter in tqdm(range(experiment_cnt), "testing"):
             experiment = testset[iter]
             mu = np.array(experiment["mu"])
             A = np.array(experiment["A"])
@@ -267,27 +336,26 @@ def test_method(n, k, experiment_cnt=10, testset_path="instances/opt_testset.jso
             mu_star = np.array(experiment["mu_star"])
             A_star = np.array(experiment["A_star"])
 
-            
-            descent_obj, descent_mu, descent_A = np.inf, None, None
-            for _ in range(1):
-                result = coordinate_descent(mu, A, w, verbose=False)
-                if result[0] < descent_obj:
-                    descent_obj, descent_mu, descent_A = result
+            alg_obj, descent_mu, descent_A = np.inf, None, None
+            for _ in range(rep):
+                result = optimization_alg(mu, A, w, verbose=False)
+                if result[0] < alg_obj:
+                    alg_obj, descent_mu, descent_A = result
 
-            suboptimal_gaps[iter] = descent_obj - obj_star
-            if obj_star + EPSILON < descent_obj:
+            suboptimal_gaps[iter] = alg_obj - obj_star
+            if obj_star + TOL < alg_obj:
                 fail_cnt += 1
-                print(f"##### failed test {iter} with {descent_obj - obj_star} gap!", file=F)
+                print(f"##### failed test {iter} with {alg_obj - obj_star} gap!", file=F)
             else:
-                print(f"##### succeeded test {iter} with {descent_obj - obj_star} gap!", file=F)
+                print(f"##### succeeded test {iter} with {alg_obj - obj_star} gap!", file=F)
             
             print(f"mu:\n{mu}\nA:\n{A}\nw:\n{w}", file=F)
-            print("### ground truth got:", file=F)
+            print("#" * 20, "ground truth", "#" * 20, file=F)
             display_results(obj_star, mu_star, A_star, file=F)
-            print("### coordinate descent got:", file=F)
-            display_results(descent_obj, descent_mu, descent_A, file=F)
+            print("#" * 20, name, "#" * 20, file=F)
+            display_results(alg_obj, descent_mu, descent_A, file=F)
+            print("-" * 60, file=F)
         
-        plt.hist(x=suboptimal_gaps.values(), bins=100)
         print("#" * 20, "final success rate:", 1 - fail_cnt / experiment_cnt, file=F)
         print("#" * 20, "average suboptimality gap:", sum(suboptimal_gaps.values()) / experiment_cnt, file=F)
         print("### suboptimality gaps:", file=F)
@@ -296,22 +364,14 @@ def test_method(n, k, experiment_cnt=10, testset_path="instances/opt_testset.jso
         print("final success rate:", 1 - fail_cnt / experiment_cnt)
         print("average suboptimality gap:", sum(suboptimal_gaps.values()) / experiment_cnt)
     
-    plt.show()
+    fig = px.box(x=suboptimal_gaps.values())
+    fig.show()
 
 
 def optimize(index):
     instance_path = f"instances/instance{index}.json"
     n, k, _, mu, A, _, _ = read_instance_from_json(instance_path)
-    
-    w = np.random.rand(n)
-    w = w / np.sum(w)
-    print("w:", w)
-    
-    print("#" * 30, "fast grid search results:")
-    display_results(*fast_grid_search(mu, A, w))
-    
-    print("#" * 30, "coordinate_descent results:")
-    display_results(*coordinate_descent(mu, A, w))
+    pass
 
 
 if __name__ == "__main__":
