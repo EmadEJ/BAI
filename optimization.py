@@ -9,7 +9,7 @@ from scipy.optimize import minimize, Bounds, LinearConstraint
 import plotly.express as px
 
 TOL = 1e-4  # used for checking whether the optimization was good enough
-
+INF = 1e-9
 
 def best_arm(mu, A):
     means = np.dot(A, mu)
@@ -206,7 +206,7 @@ def coordinate_descent(mu, A, w, iters=10, verbose=True, lr=0.01):
     return obj_star, mu_star, A_star
 
 
-def optimize_solved_mu(mu, A, w, verbose=True):
+def optimize_solved_mu(mu, A, w, method=None, verbose=True):
     n, k = A.shape
     i_star, _ = best_arm(mu, A)
     N_A = w
@@ -249,7 +249,7 @@ def optimize_solved_mu(mu, A, w, verbose=True):
             args=(s), 
             bounds=bounds, 
             constraints=constraints,
-            method="COBYQA"
+            method=method
         )
         A_p = np.array(result.x).reshape((n, k))
         mu_p = optimal_mu(mu, A, w, A_p, s)
@@ -265,6 +265,12 @@ def optimize_solved_mu(mu, A, w, verbose=True):
             A_star = A_p
 
     return obj_star, mu_star, A_star
+
+def COBYQA_solved_mu(mu, A, w, verbose=True):
+    return optimize_solved_mu(mu, A, w, "COBYQA", verbose)
+
+def SLSQP_solved_mu(mu, A, w, verbose=True):
+    return optimize_solved_mu(mu, A, w, "SLSQP", verbose)
 
 
 def optimal_w(mu, A, method="grid_seach"):
@@ -313,6 +319,8 @@ def test_method(n, k, name="", experiment_cnt=10, rep=1, testset_path="instances
     ALGS = {
         "coordinate": coordinate_descent,
         "solved_mu": optimize_solved_mu,
+        "solved_mu_COBYQA": COBYQA_solved_mu,
+        "solved_mu_SLSQP": SLSQP_solved_mu,
         "": fast_grid_search
     }
     output_path=f"results/opt_{name}.txt"
