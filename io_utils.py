@@ -22,7 +22,8 @@ def get_optimization_arguments():
     
     parser.add_argument("--instance_index", type=int, required=False, default=None)
     parser.add_argument("--experiment_cnt", type=int, required=False, default=None)
-    parser.add_argument("--name", type=str, required=False, default="")
+    parser.add_argument("--fixed_w", type=bool, required=False, default=False)
+    parser.add_argument("--name", type=str, required=False, default="grid")
     
     return parser.parse_args()
 

@@ -29,47 +29,7 @@ def objective(mu, A, mu_p, A_p, N_A, N_Z):
     return result
 
 
-def grid_search(mu, A, w, div=11, EPS=1e-6, verbose=True):
-    n, k = A.shape
-    if n != 2 or k != 3:
-        raise NotImplementedError
-    
-    N_A = w
-    N_Z = np.dot(A.T, w)
-    i_star, _ = best_arm(mu, A)
-    
-    obj_star = np.inf
-    mu_star, A_star = None, None
-    
-    grid = np.linspace(EPS, 1, div)
-    for mu1, mu2, mu3 in itertools.product(grid, grid, grid, disable=not verbose):
-        for a11, a12 in product(grid, grid):
-            if a11 + a12 > 1:
-                continue
-            for a21, a22 in product(grid, grid):
-                if a21 + a22 > 1:
-                    continue
-                
-                mu_p = np.array([mu1, mu2, mu3])
-                A_p = np.array([
-                    [a11, a12, 1-a11-a12],
-                    [a21, a22, 1-a21-a22],
-                ])
-
-                i_star_p, _ = best_arm(mu_p, A_p)
-                if i_star == i_star_p:
-                    continue
-
-                obj = objective(mu, A, mu_p, A_p, N_A, N_Z)
-                if obj < obj_star:
-                    obj_star = obj
-                    mu_star = mu_p
-                    A_star = A_p
-    
-    return obj_star, mu_star, A_star
-
-
-def fast_grid_search(mu, A, w, div=21, EPS=1e-6, verbose=True):
+def fixed_w_grid_search(mu, A, w, div=21, EPS=1e-6, solver=cp.CLARABEL, verbose=True):
     n, k = A.shape
     if n != 2 or k != 3:
         raise NotImplementedError
@@ -104,7 +64,7 @@ def fast_grid_search(mu, A, w, div=21, EPS=1e-6, verbose=True):
         for s in range(n):
             if s == i_star:
                 continue
-            A_p = optimal_A(mu, A, w, mu_p, s)
+            A_p = optimal_A(mu, A, w, mu_p, s, solver=solver)
 
             obj = objective(mu, A, mu_p, A_p, N_A, N_Z)
             if obj < obj_star:
@@ -113,6 +73,36 @@ def fast_grid_search(mu, A, w, div=21, EPS=1e-6, verbose=True):
                 A_star = A_p
     
     return obj_star, mu_star, A_star
+
+
+def grid_search(mu, A, EPS=1e-2, solver=cp.CLARABEL, verbose=True):
+    # Used ternary search for now to fine the optimal value
+    n, k = A.shape
+    if n != 2 or k != 3:
+        raise NotImplementedError
+        
+    l, r = 0.0, 1.0
+    
+    with tqdm(total=1) as pbar:
+        while l + EPS < r:
+            w1 = (5*l + 4*r) / 9
+            w_p1 = np.array([w1, 1-w1])
+            w2 = (4*l + 5*r) / 9
+            w_p2 = np.array([w2, 1-w2])
+            obj1, _, _ = fixed_w_grid_search(mu, A, w_p1, div=11, verbose=False)
+            obj2, _, _ = fixed_w_grid_search(mu, A, w_p2, div=11, verbose=False)
+            if obj1 > obj2:
+                pbar.update(r - w2)
+                r = w2
+            else:
+                pbar.update(w1 - l)
+                l = w1
+            
+    w = (l + r) / 2
+    w_star = np.array([w, 1-w])
+    obj_star, _, _ = fixed_w_grid_search(mu, A, w_star)
+    
+    return obj_star, w_star
 
 
 def optimal_mu(mu, A, w, A_p, s):
@@ -139,7 +129,7 @@ def optimal_mu(mu, A, w, A_p, s):
         return None
     
 
-def optimal_A(mu, A, w, mu_p, s):
+def optimal_A(mu, A, w, mu_p, s, solver=None):
     n, k = A.shape
     i_star, _ = best_arm(mu, A)
     
@@ -154,7 +144,7 @@ def optimal_A(mu, A, w, mu_p, s):
     problem = cp.Problem(cp.Minimize(objective), constraints)
     
     try:
-        problem.solve()
+        problem.solve(solver=solver)
         if problem.status in [cp.OPTIMAL, cp.OPTIMAL_INACCURATE]:
             return A_p.value
         else:
@@ -165,7 +155,30 @@ def optimal_A(mu, A, w, mu_p, s):
         return None
 
 
-def coordinate_descent(mu, A, w, iters=10, verbose=True, lr=0.01):
+def optimal_w(mu, A, mu_p, A_p, solver=None):
+    n, k = A.shape
+    
+    w = cp.Variable(n, nonneg=True)
+    coef = np.array([categorical_kl(A[i], A_p[i]) + 0.5*np.dot(A[i], np.square(mu - mu_p)) for i in range(n)])
+    constraints = [cp.sum(w) == 1]
+    
+    objective = cp.sum(cp.multiply(w, coef))
+    
+    problem = cp.Problem(cp.Maximize(objective), constraints)
+    
+    try:
+        problem.solve(solver=solver)
+        if problem.status in [cp.OPTIMAL, cp.OPTIMAL_INACCURATE]:
+            return w.value
+        else:
+            print("non optimal value at w")
+            return None
+    except:
+        print("failed optimization at w")
+        return None
+
+
+def coordinate_descent(mu, A, w, iters=10, verbose=True):
     n, k = A.shape
     # A_p = np.random.rand(n, k)
     # mu_p = np.random.rand(k)
@@ -273,16 +286,45 @@ def SLSQP_solved_mu(mu, A, w, verbose=True):
     return optimize_solved_mu(mu, A, w, "SLSQP", verbose)
 
 
-def optimal_w(mu, A, method="grid_seach"):
-    pass
+def optimize_scipy(mu, A, method="SLSQP", inner_method="SLSQP"):
+    n, k = A.shape
+    
+    def neg_optimize_fixed_w(w, mu, A, method):
+        return -optimize_solved_mu(mu, A, w, method)[0]
+
+    bounds = Bounds([0 for _ in range(n)], [1.0 for _ in range(n)])
+    constraints = LinearConstraint([[1.0 for _ in range(n)]], [1.0], [1.0])
+    
+    result = minimize(
+            neg_optimize_fixed_w, 
+            x0=np.random.rand(n), 
+            args=(mu, A, inner_method), 
+            bounds=bounds, 
+            constraints=constraints,
+            method=method,
+            options={'disp': True}
+        )
+    
+    return -result.fun, result.x
 
 
-def display_results(obj_star, mu_star, A_star, file=None):
-    print("minimum achieved:", obj_star, file=file)
-    print("optimal mu:", file=file)
-    print(mu_star, file=file)
-    print("optimal A:", file=file)
-    print(A_star, file=file)
+def adverserial_descent(mu, A, iters=10, method="SLSQP"):
+    # This method doesn't work
+    n, k = A.shape
+    
+    mu_star, A_star = mu, A
+    w_star = np.random.rand(n)
+
+    objs = []
+    for _ in tqdm(range(iters), disable=True):
+        obj_star, mu_star, A_star = optimize_solved_mu(mu, A, w_star, method=method)
+        objs.append(obj_star)
+
+        w_star = optimal_w(mu, A, mu_star, A_star)
+        
+    obj_star, _, _ = optimize_solved_mu(mu, A, w_star, method=method)
+    
+    return obj_star, w_star
 
 
 def create_testset(n, k, cnt, output_path="instances/opt_testset.json"):
@@ -296,7 +338,7 @@ def create_testset(n, k, cnt, output_path="instances/opt_testset.json"):
         w = np.random.rand(n)
         w = w / np.sum(w)
         
-        obj_star, mu_star, A_star = fast_grid_search(mu, A, w, verbose=False)
+        obj_star, mu_star, A_star = fixed_w_grid_search(mu, A, w, verbose=False)
         
         idx = len(testset) + 1
         testset.append({
@@ -315,15 +357,23 @@ def create_testset(n, k, cnt, output_path="instances/opt_testset.json"):
     return testset
 
 
-def test_method(n, k, name="", experiment_cnt=10, rep=1, testset_path="instances/opt_testset.json"):
+def display_results(obj_star, mu_star, A_star, file=None):
+    print("minimum achieved:", obj_star, file=file)
+    print("optimal mu:", file=file)
+    print(mu_star, file=file)
+    print("optimal A:", file=file)
+    print(A_star, file=file)
+
+
+def test_method_fixed_w(n, k, name="grid", experiment_cnt=10, rep=1, testset_path="instances/opt_testset.json"):
     ALGS = {
         "coordinate": coordinate_descent,
         "solved_mu": optimize_solved_mu,
         "solved_mu_COBYQA": COBYQA_solved_mu,
         "solved_mu_SLSQP": SLSQP_solved_mu,
-        "": fast_grid_search
+        "grid": fixed_w_grid_search
     }
-    output_path=f"results/opt_{name}.txt"
+    output_path=f"results/fixed_w_{name}.txt"
     optimization_alg: function = ALGS[name]
     
     with open(testset_path, 'r') as F:
@@ -372,19 +422,31 @@ def test_method(n, k, name="", experiment_cnt=10, rep=1, testset_path="instances
         print("final success rate:", 1 - fail_cnt / experiment_cnt)
         print("average suboptimality gap:", sum(suboptimal_gaps.values()) / experiment_cnt)
     
-    fig = px.box(x=suboptimal_gaps.values())
+    fig = px.box(x=suboptimal_gaps.values(), title=f"{name} suboptimality gaps")
     fig.show()
+
+
+def test_method(n, k, name="", experiment_cnt=10, rep=1, testset_path="instances/opt_testset.json"):
+    pass
 
 
 def optimize(index):
     instance_path = f"instances/instance{index}.json"
-    n, k, _, mu, A, _, _ = read_instance_from_json(instance_path)
-    pass
+    _, _, _, mu, A, _, _ = read_instance_from_json(instance_path)
+    
+    obj_star, w_star = grid_search(mu, A)
+    # obj_star, w_star = adverserial_descent(mu, A)
+    # obj_star, w_star = optimize_scipy(mu, A)
+    
+    print(obj_star, w_star)
 
 
 if __name__ == "__main__":
     args = get_optimization_arguments()
     if args.instance_index is None:
-        test_method(2, 3, experiment_cnt=args.experiment_cnt, name=args.name)
+        if args.fixed_w:
+            test_method_fixed_w(2, 3, experiment_cnt=args.experiment_cnt, name=args.name)
+        else:
+            test_method(2, 3, experiment_cnt=args.experiment_cnt, name=args.name)
     else:
         optimize(index=args.instance_index)
