@@ -83,7 +83,7 @@ def grid_search(mu, A, EPS=1e-2, solver=cp.CLARABEL, verbose=True):
         
     l, r = 0.0, 1.0
     
-    with tqdm(total=1) as pbar:
+    with tqdm(total=1, disable=not verbose) as pbar:
         while l + EPS < r:
             w1 = (5*l + 4*r) / 9
             w_p1 = np.array([w1, 1-w1])
@@ -100,7 +100,7 @@ def grid_search(mu, A, EPS=1e-2, solver=cp.CLARABEL, verbose=True):
             
     w = (l + r) / 2
     w_star = np.array([w, 1-w])
-    obj_star, _, _ = fixed_w_grid_search(mu, A, w_star)
+    obj_star, _, _ = fixed_w_grid_search(mu, A, w_star, solver=solver, verbose=False)
     
     return obj_star, w_star
 
@@ -286,7 +286,7 @@ def SLSQP_solved_mu(mu, A, w, verbose=True):
     return optimize_solved_mu(mu, A, w, "SLSQP", verbose)
 
 
-def optimize_scipy(mu, A, method="SLSQP", inner_method="SLSQP"):
+def optimize_scipy(mu, A, method="SLSQP", inner_method="SLSQP", verbose=True):
     n, k = A.shape
     
     def neg_optimize_fixed_w(w, mu, A, method):
@@ -302,13 +302,13 @@ def optimize_scipy(mu, A, method="SLSQP", inner_method="SLSQP"):
             bounds=bounds, 
             constraints=constraints,
             method=method,
-            options={'disp': True}
+            options={'disp': verbose}
         )
     
     return -result.fun, result.x
 
 
-def adverserial_descent(mu, A, iters=10, method="SLSQP"):
+def adverserial_descent(mu, A, iters=10, method="SLSQP", verbose=True):
     # This method doesn't work
     n, k = A.shape
     
@@ -316,7 +316,7 @@ def adverserial_descent(mu, A, iters=10, method="SLSQP"):
     w_star = np.random.rand(n)
 
     objs = []
-    for _ in tqdm(range(iters), disable=True):
+    for _ in tqdm(range(iters), disable=not verbose):
         obj_star, mu_star, A_star = optimize_solved_mu(mu, A, w_star, method=method)
         objs.append(obj_star)
 
@@ -327,7 +327,7 @@ def adverserial_descent(mu, A, iters=10, method="SLSQP"):
     return obj_star, w_star
 
 
-def create_testset(n, k, cnt, output_path="instances/opt_testset.json"):
+def create_testset_fixed_w(n, k, cnt, output_path="instances/fixed_w_testset.json"):
     with open(output_path, "r") as F:
         testset = json.load(F)
     
@@ -357,15 +357,46 @@ def create_testset(n, k, cnt, output_path="instances/opt_testset.json"):
     return testset
 
 
-def display_results(obj_star, mu_star, A_star, file=None):
+def create_testset(n, k, cnt, output_path="instances/opt_testset.json"):
+    with open(output_path, "r") as F:
+        testset = json.load(F)
+    
+    for _ in tqdm(range(cnt), desc="expanding dataset"):
+        mu = np.random.rand(k)
+        A = np.random.rand(n, k)
+        A = (A.T / np.sum(A, axis=1)).T
+        
+        obj_star, w_star = grid_search(mu, A, verbose=False)
+        
+        idx = len(testset) + 1
+        testset.append({
+            "index": idx,
+            "mu": mu.tolist(),
+            "A": A.tolist(),
+            "w_star": w_star.tolist(),
+            "obj_star": obj_star,
+        })
+    
+    with open(output_path, "w") as F:
+        json.dump(testset, F, indent=4)
+        
+    return testset
+
+
+def display_results_fixed_w(obj_star, mu_star, A_star, file=None):
     print("minimum achieved:", obj_star, file=file)
     print("optimal mu:", file=file)
     print(mu_star, file=file)
     print("optimal A:", file=file)
     print(A_star, file=file)
 
+def display_results(obj_star, w_star, file=None):
+    print("maximum achieved:", obj_star, file=file)
+    print("optimal w:", file=file)
+    print(w_star, file=file)
 
-def test_method_fixed_w(n, k, name="grid", experiment_cnt=10, rep=1, testset_path="instances/opt_testset.json"):
+
+def test_method_fixed_w(n, k, name="grid", experiment_cnt=10, rep=1, testset_path="instances/fixed_w_testset.json"):
     ALGS = {
         "coordinate": coordinate_descent,
         "solved_mu": optimize_solved_mu,
@@ -380,7 +411,7 @@ def test_method_fixed_w(n, k, name="grid", experiment_cnt=10, rep=1, testset_pat
         testset = json.load(F)
     
     if experiment_cnt > len(testset):
-        testset = create_testset(n, k, experiment_cnt-len(testset))
+        testset = create_testset_fixed_w(n, k, experiment_cnt-len(testset))
     
     with open(output_path, 'w') as F:
         suboptimal_gaps = {}
@@ -394,11 +425,11 @@ def test_method_fixed_w(n, k, name="grid", experiment_cnt=10, rep=1, testset_pat
             mu_star = np.array(experiment["mu_star"])
             A_star = np.array(experiment["A_star"])
 
-            alg_obj, descent_mu, descent_A = np.inf, None, None
+            alg_obj, alg_mu, alg_A = np.inf, None, None
             for _ in range(rep):
                 result = optimization_alg(mu, A, w, verbose=False)
                 if result[0] < alg_obj:
-                    alg_obj, descent_mu, descent_A = result
+                    alg_obj, alg_mu, alg_A = result
 
             suboptimal_gaps[iter] = alg_obj - obj_star
             if obj_star + TOL < alg_obj:
@@ -409,9 +440,9 @@ def test_method_fixed_w(n, k, name="grid", experiment_cnt=10, rep=1, testset_pat
             
             print(f"mu:\n{mu}\nA:\n{A}\nw:\n{w}", file=F)
             print("#" * 20, "ground truth", "#" * 20, file=F)
-            display_results(obj_star, mu_star, A_star, file=F)
+            display_results_fixed_w(obj_star, mu_star, A_star, file=F)
             print("#" * 20, name, "#" * 20, file=F)
-            display_results(alg_obj, descent_mu, descent_A, file=F)
+            display_results_fixed_w(alg_obj, alg_mu, alg_A, file=F)
             print("-" * 60, file=F)
         
         print("#" * 20, "final success rate:", 1 - fail_cnt / experiment_cnt, file=F)
@@ -427,7 +458,60 @@ def test_method_fixed_w(n, k, name="grid", experiment_cnt=10, rep=1, testset_pat
 
 
 def test_method(n, k, name="", experiment_cnt=10, rep=1, testset_path="instances/opt_testset.json"):
-    pass
+    ALGS = {
+        "adverserial": adverserial_descent,
+        "scipy": optimize_scipy,
+        "grid": grid_search
+    }
+    output_path=f"results/opt_{name}.txt"
+    optimization_alg: function = ALGS[name]
+    
+    with open(testset_path, 'r') as F:
+        testset = json.load(F)
+    
+    if experiment_cnt > len(testset):
+        testset = create_testset(n, k, experiment_cnt-len(testset))
+    
+    with open(output_path, 'w') as F:
+        suboptimal_gaps = {}
+        fail_cnt = 0
+        for iter in tqdm(range(experiment_cnt), "testing"):
+            experiment = testset[iter]
+            mu = np.array(experiment["mu"])
+            A = np.array(experiment["A"])
+            w_star = np.array(experiment["w_star"])
+            obj_star = experiment["obj_star"]
+            
+            alg_obj, alg_w = np.inf, None
+            for _ in range(rep):
+                result = optimization_alg(mu, A, verbose=False)
+                if result[0] < alg_obj:
+                    alg_obj, alg_w = result
+
+            suboptimal_gaps[iter] = obj_star - alg_obj
+            if obj_star - TOL > alg_obj:
+                fail_cnt += 1
+                print(f"##### failed test {iter} with {obj_star - alg_obj} gap!", file=F)
+            else:
+                print(f"##### succeeded test {iter} with {obj_star - alg_obj} gap!", file=F)
+            
+            print(f"mu:\n{mu}\nA:\n{A}", file=F)
+            print("#" * 20, "ground truth", "#" * 20, file=F)
+            display_results(obj_star, w_star, file=F)
+            print("#" * 20, name, "#" * 20, file=F)
+            display_results(alg_obj, alg_w, file=F)
+            print("-" * 60, file=F)
+        
+        print("#" * 20, "final success rate:", 1 - fail_cnt / experiment_cnt, file=F)
+        print("#" * 20, "average suboptimality gap:", sum(suboptimal_gaps.values()) / experiment_cnt, file=F)
+        print("### suboptimality gaps:", file=F)
+        print(suboptimal_gaps, file=F)
+        
+        print("final success rate:", 1 - fail_cnt / experiment_cnt)
+        print("average suboptimality gap:", sum(suboptimal_gaps.values()) / experiment_cnt)
+    
+    fig = px.box(x=suboptimal_gaps.values(), title=f"{name} suboptimality gaps")
+    fig.show()
 
 
 def optimize(index):
