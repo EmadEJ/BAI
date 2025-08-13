@@ -219,11 +219,9 @@ def coordinate_descent(mu, A, w, iters=10, verbose=True):
     return obj_star, mu_star, A_star
 
 
-def optimize_solved_mu(mu, A, w, method=None, verbose=True):
+def optimize_solved_mu(mu, A, N_A, N_Z, method=None, verbose=True):
     n, k = A.shape
     i_star, _ = best_arm(mu, A)
-    N_A = w
-    N_Z = np.dot(A.T, w)
     
     def solved_mu_objective(A_p_list, s):  # assumes gaussian
         A_p = np.array(A_p_list).reshape((n, k))
@@ -265,8 +263,8 @@ def optimize_solved_mu(mu, A, w, method=None, verbose=True):
             method=method
         )
         A_p = np.array(result.x).reshape((n, k))
-        mu_p = optimal_mu(mu, A, w, A_p, s)
-        obj = objective(mu, A, optimal_mu(mu, A, w, A_p, s), A_p, w, np.dot(A.T, w))
+        mu_p = optimal_mu(mu, A, N_A, A_p, s)
+        obj = objective(mu, A, mu_p, A_p, N_A, N_Z)
         
         if np.abs(result.fun - obj) > 1e-6:
             print("something fishy going on")
@@ -280,17 +278,17 @@ def optimize_solved_mu(mu, A, w, method=None, verbose=True):
     return obj_star, mu_star, A_star
 
 def COBYQA_solved_mu(mu, A, w, verbose=True):
-    return optimize_solved_mu(mu, A, w, "COBYQA", verbose)
+    return optimize_solved_mu(mu, A, w, np.dot(A.T, w), "COBYQA", verbose)
 
 def SLSQP_solved_mu(mu, A, w, verbose=True):
-    return optimize_solved_mu(mu, A, w, "SLSQP", verbose)
+    return optimize_solved_mu(mu, A, w, np.dot(A.T, w), "SLSQP", verbose)
 
 
 def optimize_scipy(mu, A, method="SLSQP", inner_method="SLSQP", verbose=True):
     n, k = A.shape
     
     def neg_optimize_fixed_w(w, mu, A, method):
-        return -optimize_solved_mu(mu, A, w, method)[0]
+        return -optimize_solved_mu(mu, A, w, np.dot(A.T, w), method)[0]
 
     bounds = Bounds([0 for _ in range(n)], [1.0 for _ in range(n)])
     constraints = LinearConstraint([[1.0 for _ in range(n)]], [1.0], [1.0])
@@ -325,6 +323,26 @@ def adverserial_descent(mu, A, iters=10, method="SLSQP", verbose=True):
     obj_star, _, _ = optimize_solved_mu(mu, A, w_star, method=method)
     
     return obj_star, w_star
+
+
+def optimize_GLR(mu, A, N_A, N_Z, alg="solved_mu"):
+    ALGS = {
+        "solved_mu": optimize_solved_mu,
+    }
+    optimization_alg: function = ALGS[alg]
+    
+    return optimization_alg(mu, A, N_A, N_Z)
+
+
+def optimize(mu, A, alg="scipy"):
+    ALGS = {
+        "adverserial": adverserial_descent,
+        "scipy": optimize_scipy,
+        "grid": grid_search
+    }
+    optimization_alg: function = ALGS[alg]
+    
+    return optimization_alg(mu, A, verbose=False)
 
 
 def create_testset_fixed_w(n, k, cnt, output_path="instances/fixed_w_testset.json"):
@@ -399,7 +417,6 @@ def display_results(obj_star, w_star, file=None):
 def test_method_fixed_w(n, k, name="grid", experiment_cnt=10, rep=1, testset_path="instances/fixed_w_testset.json"):
     ALGS = {
         "coordinate": coordinate_descent,
-        "solved_mu": optimize_solved_mu,
         "solved_mu_COBYQA": COBYQA_solved_mu,
         "solved_mu_SLSQP": SLSQP_solved_mu,
         "grid": fixed_w_grid_search
@@ -458,13 +475,7 @@ def test_method_fixed_w(n, k, name="grid", experiment_cnt=10, rep=1, testset_pat
 
 
 def test_method(n, k, name="", experiment_cnt=10, rep=1, testset_path="instances/opt_testset.json"):
-    ALGS = {
-        "adverserial": adverserial_descent,
-        "scipy": optimize_scipy,
-        "grid": grid_search
-    }
     output_path=f"results/opt_{name}.txt"
-    optimization_alg: function = ALGS[name]
     
     with open(testset_path, 'r') as F:
         testset = json.load(F)
@@ -484,7 +495,7 @@ def test_method(n, k, name="", experiment_cnt=10, rep=1, testset_path="instances
             
             alg_obj, alg_w = np.inf, None
             for _ in range(rep):
-                result = optimization_alg(mu, A, verbose=False)
+                result = optimize(mu, A, alg=name, verbose=False)
                 if result[0] < alg_obj:
                     alg_obj, alg_w = result
 
@@ -514,7 +525,7 @@ def test_method(n, k, name="", experiment_cnt=10, rep=1, testset_path="instances
     fig.show()
 
 
-def optimize(index):
+def optimize_instance(index):
     instance_path = f"instances/instance{index}.json"
     _, _, _, mu, A, _, _ = read_instance_from_json(instance_path)
     
@@ -523,7 +534,7 @@ def optimize(index):
     # obj_star, w_star = optimize_scipy(mu, A)
     
     print(obj_star, w_star)
-
+    
 
 if __name__ == "__main__":
     args = get_optimization_arguments()
@@ -533,4 +544,4 @@ if __name__ == "__main__":
         else:
             test_method(2, 3, experiment_cnt=args.experiment_cnt, name=args.name)
     else:
-        optimize(index=args.instance_index)
+        optimize_instance(index=args.instance_index)

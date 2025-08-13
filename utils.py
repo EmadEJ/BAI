@@ -17,18 +17,6 @@ def Cg(x):
     return x + np.log(x)
 
 
-def c_hat_t(n, k , t, delta):
-    return 4 * k * np.log(4 + np.log(t / (2 * k))) + 2 * k * Cg(np.log((n - 1) / delta)/(2 * k))
-
-
-def c_hat_sep(k, N_z, delta):
-    return 2 * np.sum(np.log(4 + np.log(N_z))) + k * Cg(np.log(1/delta) / k)
-
-
-def beta(t, delta):
-    return np.log((np.log(t) + 1) / delta)/t
-
-
 def hidden_action_sampler(distribution, n_samples = None):
     if n_samples:
         return np.random.choice(np.arange(len(distribution)), size = n_samples, p = distribution)
