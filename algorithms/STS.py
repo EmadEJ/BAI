@@ -63,13 +63,11 @@ class STS:
             (self.k-1) * sum([np.log(np.e * (1 + self.N_A[i] / (self.k-1))) for i in range(self.n)])
         )
 
-    def Stopping_Rule(self, verbose=False):
+    def Stopping_Rule(self):
         # returns True if need to stop and are enough confident
         lambda_hat_t = self.lambda_hat() 
         beta_t = self.beta_t_mu(self.confidence / 2) + self.beta_t_mu(self.confidence / 2)
-        if verbose:
-            print(f"lambda_hat_t: {lambda_hat_t}, beta_t: {beta_t}, confidence: {self.confidence}")
-        return lambda_hat_t > beta_t
+        return lambda_hat_t > beta_t, lambda_hat_t, beta_t
 
 
     # def optimization_line_coefficient(self, w_t, v_k): 

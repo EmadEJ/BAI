@@ -334,7 +334,7 @@ def optimize_GLR(mu, A, N_A, N_Z, alg="solved_mu"):
     return optimization_alg(mu, A, N_A, N_Z)
 
 
-def optimize(mu, A, alg="scipy"):
+def optimize(mu, A, alg="scipy", verbose=False):
     ALGS = {
         "adverserial": adverserial_descent,
         "scipy": optimize_scipy,
@@ -342,7 +342,7 @@ def optimize(mu, A, alg="scipy"):
     }
     optimization_alg: function = ALGS[alg]
     
-    return optimization_alg(mu, A, verbose=False)
+    return optimization_alg(mu, A, verbose=verbose)
 
 
 def create_testset_fixed_w(n, k, cnt, output_path="instances/fixed_w_testset.json"):

@@ -22,56 +22,12 @@ class Environment:
         self.delta = self.means[self.best_arm] - self.means
         
         # self.optimal_W, self.T_star = self.optimal_weight()
-        
         # self.T_star = 0.5 / self.T_star  # NOTE: why 0.5??
         
-        self.mu_hats = []
-        self.A_hat = []
-        self.w_s = []
-        self.N_times_seens = []
-        
-        self.log_period = 10  # every 20 iteration save the data of the arms played up to now and optimal w
+        self.log_period = 20  # every 20 iterations save the data of the arms played up to now and optimal w
         
         self.stopping_rule = stopping_rule  # for c-tracking 
-       
-    # def optimal_weight(self):
-    #     # TODO: this should change for unkonwn A case. and should be moved to algorithms
 
-    #     delta = self.delta
-    #     i_star = self.best_arm
-
-    #     lambda_var = cp.Variable(self.n, nonneg=True)  # Weights for convex combination
-    #     w = self.A.T @ lambda_var  # w is a convex combination of rows of A
-    #     t = cp.Variable()
-
-    #     constraints = [cp.sum(lambda_var) == 1]  
-        
-    #     constraints += [w[j] >= 0 for j in range(self.k)]
-        
-        
-    #     for i in range(self.n):
-    #         if i == i_star:  # constraints are for non-optimal arms
-    #             continue
-
-    #         middle = cp.sum([(self.A[i, j] - self.A[i_star, j])**2 * cp.inv_pos(w[j]) for j in range(self.k)])
-    #         constraints.append(t >= middle / (delta[i] ** 2))
-
-    #     objective = cp.Minimize(t)
-        
-    #     problem = cp.Problem(objective, constraints)
-        
-    #     try:
-    #         problem.solve()
-    #     except cp.SolverError as e:
-    #         self.optimization_failed_flag = True
-
-
-    #     if problem.status not in ["optimal", "optimal_inaccurate"]:
-    #         self.optimization_failed_flag = True
-    #         return 0,0
-    #         # raise ValueError("Optimization problem did not converge.")
-
-    #     return w.value, t.value 
 
     def take_action(self, action):
         post_action = hidden_action_sampler(self.A[action])
@@ -81,36 +37,47 @@ class Environment:
         return post_action, reward
 
     def loop(self):
+        mu_hats = []
+        A_hats = []
+        w_s = []
+        N_times_seens = []
+        lambdas = []
+        betas = []
+        
         if self.algorithm == 'STS': #Seperator Track and Stop            
             alg = STS(self.n, self.k, self.confidence, self.mode)  # shouldn't get A
             in_init = True
             
-            while in_init or not alg.Stopping_Rule():
+            while in_init or not alg.Stopping_Rule()[0]:
                 # Select an action using the algorithm
                 action, init = alg.C_Tracking()
                 
                 if in_init and not init:
                     in_init = False
-                    print(f"initialization finished with {self.T} rounds")                    
+                    print(f"----- initialization finished with {self.T} rounds -----")                    
                 
                 post_action, reward = self.take_action(action)
                 alg.update(action, post_action, reward)
                 
-                if not in_init:
-                    w = alg.optimal_w()
-                    w = w.tolist()
-                
-                if not in_init and w and self.T % self.log_period == 0:
-                    alg.Stopping_Rule(verbose=True)
+                if not in_init and self.T % self.log_period == 0:
+                    w = alg.optimal_w().tolist()
+                    w_s.append(w)
+                    mu_hats.append(alg.get_mu_hat().tolist())
+                    A_hats.append(alg.get_A_hat().tolist())
+                    N_times_seens.append(alg.N_A.tolist())
+
+                    _, lambda_t, beta_t = alg.Stopping_Rule()
+                    lambdas.append(lambda_t)
+                    betas.append(beta_t)
+                    
+                    print(f"lambda_hat_t: {lambda_t}, beta_t: {beta_t}, confidence: {self.confidence}")
                     print(f"Round {self.T}, action {action}, post_action {post_action}, reward {reward}, w: {w}")
                     print("#" * 50)
-                    self.w_s.append(w)
-                    _, actions_mu_hat, _ = alg.best_empirical_arm_calculator()
-
-                    self.mu_hats.append(actions_mu_hat.tolist())
-                    self.N_times_seens.append(alg.N_A.tolist())
                 
+            _, lambda_t, beta_t = alg.Stopping_Rule()
+            lambdas.append(lambda_t)
+            betas.append(beta_t)
             best_arm, _, _ = alg.best_empirical_arm_calculator()
             print(f"number of failed optimization rounds is {alg.optimization_failed_number_of_rounds}")
         
-        return best_arm, self.mu_hats, self.N_times_seens, self.w_s, self.T
+        return best_arm, mu_hats, N_times_seens, w_s, lambdas, betas, self.T
