@@ -1,8 +1,8 @@
 import numpy as np
 import cvxpy as cp
 from tqdm import tqdm
-from tqdm.contrib import itertools
-from itertools import product
+# from tqdm.contrib import itertools
+import itertools
 from utils import *
 from io_utils import *
 from scipy.optimize import minimize, Bounds, LinearConstraint
@@ -29,7 +29,7 @@ def objective(mu, A, mu_p, A_p, N_A, N_Z):
     return result
 
 
-def fixed_w_grid_search(mu, A, w, div=21, EPS=1e-6, solver=cp.CLARABEL, verbose=True):
+def fixed_w_grid_search(mu, A, w, div=21, div2=11, solver=cp.CLARABEL, verbose=True):
     n, k = A.shape
     if n != 2 or k != 3:
         raise NotImplementedError
@@ -41,9 +41,10 @@ def fixed_w_grid_search(mu, A, w, div=21, EPS=1e-6, solver=cp.CLARABEL, verbose=
     obj_star = np.inf
     mu_star, A_star = None, None
     
-    grid = np.linspace(EPS, 1, div)
-    for mu1, mu2, mu3 in itertools.product(grid, grid, grid, disable=not verbose):
-        mu_p = np.array([mu1, mu2, mu3])
+    grid_range = np.linspace(0, 1, div)
+    grid = itertools.product(grid_range, repeat=k)
+    for mu_p in grid:
+        mu_p = np.array(mu_p)
         for s in range(n):
             if s == i_star:
                 continue
@@ -55,12 +56,12 @@ def fixed_w_grid_search(mu, A, w, div=21, EPS=1e-6, solver=cp.CLARABEL, verbose=
                 mu_star = mu_p
                 A_star = A_p
     
+    mu_p_base = mu_star.copy()
     gap = 1/(div-1)
-    for mu1, mu2, mu3 in itertools.product(
-        np.linspace(mu_star[0] - gap, mu_star[0] + gap, 11), 
-        np.linspace(mu_star[1] - gap, mu_star[1] + gap, 11), 
-        np.linspace(mu_star[2] - gap, mu_star[2] + gap, 11), disable=not verbose):
-        mu_p = np.array([mu1, mu2, mu3])
+    grid_range = np.linspace(-gap, gap, div2)
+    grid = itertools.product(grid_range, repeat=k)
+    for noise in grid:
+        mu_p = np.clip(mu_p_base + noise, 0, 1)
         for s in range(n):
             if s == i_star:
                 continue
@@ -75,33 +76,49 @@ def fixed_w_grid_search(mu, A, w, div=21, EPS=1e-6, solver=cp.CLARABEL, verbose=
     return obj_star, mu_star, A_star
 
 
-def grid_search(mu, A, EPS=1e-2, solver=cp.CLARABEL, verbose=True):
-    # Used ternary search for now to fine the optimal value
+def ternary_search(mu, A, EPS=1e-3, max_iter=20, solver=cp.CLARABEL, verbose=True):
     n, k = A.shape
-    if n != 2 or k != 3:
-        raise NotImplementedError
+    # Used coordinate ternary search to get to the result
+    w_star = np.random.rand(n)
+    w_star = w_star / np.sum(w_star)
+    
+    # Note that w[0] is always 1 - sum of the rest.
+    for _ in range(max_iter):
+        old_w_star = w_star.copy()
         
-    l, r = 0.0, 1.0
-    
-    with tqdm(total=1, disable=not verbose) as pbar:
-        while l + EPS < r:
-            w1 = (5*l + 4*r) / 9
-            w_p1 = np.array([w1, 1-w1])
-            w2 = (4*l + 5*r) / 9
-            w_p2 = np.array([w2, 1-w2])
-            obj1, _, _ = fixed_w_grid_search(mu, A, w_p1, div=11, verbose=False)
-            obj2, _, _ = fixed_w_grid_search(mu, A, w_p2, div=11, verbose=False)
-            if obj1 > obj2:
-                pbar.update(r - w2)
-                r = w2
-            else:
-                pbar.update(w1 - l)
-                l = w1
+        for i in tqdm(range(1, n), desc="optimizing over coordinates", disable=not verbose, leave=False):
             
-    w = (l + r) / 2
-    w_star = np.array([w, 1-w])
-    obj_star, _, _ = fixed_w_grid_search(mu, A, w_star, solver=solver, verbose=False)
-    
+            l = 0.0
+            r = w_star[i] + w_star[0]
+            
+            while l + EPS < r:
+                wi1 = (5*l + 4*r) / 9
+                w_p1 = np.copy(w_star)
+                w_p1[i] = wi1
+                w_p1[0] = w_star[i] + w_star[0] - wi1
+                w_p1 = w_p1 / sum(w_p1)
+                wi2 = (4*l + 5*r) / 9
+                w_p2 = np.copy(w_star)
+                w_p2[i] = wi2
+                w_p2[0] = w_star[i] + w_star[0] - wi2
+                w_p2 = w_p2 / sum(w_p2)
+                obj1, _, _ = fixed_w_grid_search(mu, A, w_p1, div=11, div2=11, verbose=False)
+                obj2, _, _ = fixed_w_grid_search(mu, A, w_p2, div=11, div2=11, verbose=False)
+                if obj1 > obj2:
+                    r = wi2
+                else:
+                    l = wi1
+            
+            wi = (l + r) / 2
+            w0 = w_star[i] + w_star[0] - wi
+            w_star[i] = wi
+            w_star[0] = w0
+            w_star = w_star / np.sum(w_star)  # make sure sum to 1
+        
+        if np.allclose(old_w_star, w_star, atol=EPS, rtol=0):
+            break
+
+    obj_star, _, _ = fixed_w_grid_search(mu, A, w_star, solver=solver, verbose=False)    
     return obj_star, w_star
 
 
@@ -338,7 +355,7 @@ def optimize(mu, A, alg="scipy", verbose=False):
     ALGS = {
         "adverserial": adverserial_descent,
         "scipy": optimize_scipy,
-        "grid": grid_search
+        "ternary": ternary_search
     }
     optimization_alg: function = ALGS[alg]
     
@@ -384,7 +401,7 @@ def create_testset(n, k, cnt, output_path="instances/opt_testset.json"):
         A = np.random.rand(n, k)
         A = (A.T / np.sum(A, axis=1)).T
         
-        obj_star, w_star = grid_search(mu, A, verbose=False)
+        obj_star, w_star = ternary_search(mu, A, verbose=False)
         
         idx = len(testset) + 1
         testset.append({
@@ -493,10 +510,10 @@ def test_method(n, k, name="", experiment_cnt=10, rep=1, testset_path="instances
             w_star = np.array(experiment["w_star"])
             obj_star = experiment["obj_star"]
             
-            alg_obj, alg_w = np.inf, None
+            alg_obj, alg_w = -np.inf, None
             for _ in range(rep):
                 result = optimize(mu, A, alg=name, verbose=False)
-                if result[0] < alg_obj:
+                if result[0] > alg_obj:
                     alg_obj, alg_w = result
 
             suboptimal_gaps[iter] = obj_star - alg_obj
@@ -529,7 +546,7 @@ def optimize_instance(index):
     instance_path = f"instances/instance{index}.json"
     _, _, _, mu, A, _, _ = read_instance_from_json(instance_path)
     
-    obj_star, w_star = grid_search(mu, A)
+    obj_star, w_star = ternary_search(mu, A)
     # obj_star, w_star = adverserial_descent(mu, A)
     # obj_star, w_star = optimize_scipy(mu, A)
     
