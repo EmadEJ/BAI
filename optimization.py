@@ -79,6 +79,39 @@ def fixed_w_grid_search(mu, A, w, div=21, div2=11, solver=cp.CLARABEL, verbose=T
     return obj_star, mu_star, A_star
 
 
+def grid_search(mu, A, div=101, solver=cp.CLARABEL, verbose=True):
+    n, k = A.shape
+    # Used coordinate ternary search to get to the result
+    obj_star = -np.inf  
+    w_star = None
+    
+    objs = []
+    grid_range = np.linspace(0, 1, div)
+    grid = itertools.product(grid_range, repeat=n-1)
+    # Note that w[0] is always 1 - sum of the rest.
+    for w_p in grid:
+        w0 = 1 - sum(w_p)
+        if w0 < 0:
+            continue
+        
+        w_p = np.array(([w0] + list(w_p)))
+        
+        obj_p, _, _ = fixed_w_grid_search(mu, A, w_p, solver=solver, div=11, div2=11, verbose=False)
+        # obj_p, _, _ = optimize_solved_mu(mu, A, w_p, np.dot(A.T, w_p), method="SLSQP")
+        objs.append(obj_p)
+        
+        if obj_p > obj_star:
+            w_star = w_p
+            obj_star = obj_p
+    
+    if verbose and n == 2:
+        fig = px.line(x=np.linspace(0, 1, div), y=objs)
+        fig.show()
+    
+    obj_star, _, _ = optimize_solved_mu(mu, A, w_star, np.dot(A.T, w_star), method="SLSQP") 
+    return obj_star, w_star
+
+
 def ternary_search(mu, A, EPS=1e-3, max_iter=20, solver=cp.CLARABEL, verbose=True):
     n, k = A.shape
     # Used coordinate ternary search to get to the result
@@ -239,7 +272,7 @@ def coordinate_descent(mu, A, w, iters=10, verbose=True):
     return obj_star, mu_star, A_star
 
 
-def optimize_solved_mu(mu, A, N_A, N_Z, method=None, verbose=True):
+def optimize_solved_mu(mu, A, N_A, N_Z, method=None, verbose=False):
     n, k = A.shape
     i_star, _ = best_arm(mu, A)
     
@@ -255,7 +288,13 @@ def optimize_solved_mu(mu, A, N_A, N_Z, method=None, verbose=True):
             denom += (A_p[i_star][j] - A_p[s][j])**2 / N_Z[j]
         
         delta = max(np.dot(A_p[i_star], mu) - np.dot(A_p[s], mu), 0.0)
-        result += (delta**2 / (2*denom) if denom != 0 else np.inf)
+        if delta == 0:
+            added_val = 0
+        elif denom == 0:
+            added_val = np.inf
+        else:
+            added_val = delta**2 / (2*denom)
+        result += added_val
 
         return result
     
@@ -283,6 +322,19 @@ def optimize_solved_mu(mu, A, N_A, N_Z, method=None, verbose=True):
             constraints=constraints,
             method=method
         )
+        # doing the optimization with 2 starting points
+        A0 = optimal_A(mu, A, N_A, mu, s)
+        result2 = minimize(
+            solved_mu_objective, 
+            x0=np.reshape(A0, (n*k)).tolist(), 
+            args=(s), 
+            bounds=bounds, 
+            constraints=constraints,
+            method=method
+        )
+        if result2.fun < result.fun:
+            result = result2
+        
         A_p = np.array(result.x).reshape((n, k))
         mu_p = optimal_mu(mu, A, N_A, A_p, s)
         obj = objective(mu, A, mu_p, A_p, N_A, N_Z)
@@ -290,24 +342,27 @@ def optimize_solved_mu(mu, A, N_A, N_Z, method=None, verbose=True):
         if np.abs(result.fun - obj) > 1e-6:
             print("something fishy going on")
             print(obj, result.fun)
+            print("A_p", A_p)
+            print("mu_p", mu_p)
         
         if obj < obj_star:
             obj_star = obj
             mu_star = mu_p
             A_star = A_p
-    
-    
-    A_p_list = [0.22294661, 0.77705339, 0.22294653, 0.77705346]
-    A_p = np.array(A_p_list).reshape((n, k))
-    mu_p = optimal_mu(mu, A, N_A, A_p, 0)
-    
-    # print(mu_p)
-    print(
-        solved_mu_objective(np.reshape(A_star, (n*k)).tolist(), 0), 
-        objective(mu, A, mu_star, A_star, N_A, N_Z),
-        solved_mu_objective(A_p_list, 0),
-        objective(mu, A, mu_p, A_p, N_A, N_Z)
-    )
+
+    if verbose and n == 2 and k == 2:
+        grid_range = np.linspace(0, 1, 101)
+        grid = itertools.product(enumerate(grid_range), repeat=2)
+        fun_map = np.zeros((101, 101))
+        for x, y in grid:
+            i, a00 = x
+            j, a10 = y
+            
+            A_p_list = [a00, 1-a00, a10, 1-a10]
+            fun_map[i][j] = solved_mu_objective(A_p_list, 1-i_star)
+
+        fig = px.imshow(np.log(fun_map))
+        fig.show()
 
     return obj_star, mu_star, A_star
 
@@ -318,7 +373,8 @@ def SLSQP_solved_mu(mu, A, w, verbose=True):
     return optimize_solved_mu(mu, A, w, np.dot(A.T, w), "SLSQP", verbose)
 
 
-def optimize_scipy(mu, A, method="SLSQP", inner_method="SLSQP", verbose=True):
+# SLSQP doesn't work well in the second layer.
+def optimize_scipy(mu, A, method="COBYQA", inner_method="SLSQP", verbose=True):
     n, k = A.shape
     
     def neg_optimize_fixed_w(w, mu, A, method):
@@ -337,7 +393,10 @@ def optimize_scipy(mu, A, method="SLSQP", inner_method="SLSQP", verbose=True):
             options={'disp': verbose}
         )
     
-    return -result.fun, result.x
+    w_star = result.x
+    obj_star, mu_star, A_star = optimize_solved_mu(mu, A, w_star, np.dot(A.T, w_star), method)
+    
+    return obj_star, w_star
 
 
 def adverserial_descent(mu, A, iters=10, method="SLSQP", verbose=True):
@@ -372,7 +431,8 @@ def optimize(mu, A, alg="scipy", verbose=False):
     ALGS = {
         "adverserial": adverserial_descent,
         "scipy": optimize_scipy,
-        "ternary": ternary_search
+        "ternary": ternary_search,
+        "grid": grid_search
     }
     optimization_alg: function = ALGS[alg]
     
@@ -473,6 +533,9 @@ def test_method_fixed_w(n, k, name="grid", experiment_cnt=10, rep=1):
     }
     testset_path = TESTSET_DIR + f"fixed_w_n={n}_k={k}.json"
     output_path=f"results/fixed_w_{name}.txt"
+    if name not in ALGS.keys():
+        print("Invalid alg name!")
+        return
     optimization_alg: function = ALGS[name]
     
     testset = prep_testest(testset_path)
@@ -528,11 +591,22 @@ def test_method(n, k, name="", experiment_cnt=10, rep=1):
     testset_path = TESTSET_DIR + f"opt_n={n}_k={k}.json"
     output_path=f"results/opt_{name}.txt"
     
+    ALGS = {
+        "adverserial": adverserial_descent,
+        "scipy": optimize_scipy,
+        "ternary": ternary_search,
+        "grid": grid_search
+    }
+    if name not in ALGS.keys():
+        print("Invalid alg name!")
+        return
+    
     testset = prep_testest(testset_path)
     if experiment_cnt > len(testset):
         testset = create_testset(n, k, experiment_cnt-len(testset))
     
     with open(output_path, 'w') as F:
+        print(f"~~~~~~~~~~ testing on n={n}, k={k}, {experiment_cnt} times", file=F)
         suboptimal_gaps = {}
         fail_cnt = 0
         for iter in tqdm(range(experiment_cnt), "testing"):
@@ -574,13 +648,21 @@ def test_method(n, k, name="", experiment_cnt=10, rep=1):
     fig.show()
 
 
-def optimize_instance(index):
+def optimize_instance(index, alg):
     instance_path = f"instances/instance{index}.json"
     _, _, _, mu, A, _, _ = read_instance_from_json(instance_path)
     
-    obj_star, w_star = ternary_search(mu, A)
-    # obj_star, w_star = adverserial_descent(mu, A)
-    # obj_star, w_star = optimize_scipy(mu, A)
+    ALGS = {
+        "adverserial": adverserial_descent,
+        "scipy": optimize_scipy,
+        "ternary": ternary_search,
+        "grid": grid_search
+    }
+    if alg not in ALGS.keys():
+        print("Invalid alg name!")
+        return
+    
+    obj_star, w_star = optimize(mu, A, alg, True)
     
     print(obj_star, w_star)
     
@@ -595,4 +677,4 @@ if __name__ == "__main__":
         else:
             test_method(n, k, experiment_cnt=args.experiment_cnt, name=args.name)
     else:
-        optimize_instance(index=args.instance_index)
+        optimize_instance(index=args.instance_index, name=args.name)
