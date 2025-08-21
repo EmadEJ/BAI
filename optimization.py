@@ -7,9 +7,14 @@ from utils import *
 from io_utils import *
 from scipy.optimize import minimize, Bounds, LinearConstraint
 import plotly.express as px
+from pathlib import Path
+
+
+TESTSET_DIR = "testsets/"
 
 TOL = 1e-4  # used for checking whether the optimization was good enough
 INF = 1e-9
+
 
 def best_arm(mu, A):
     means = np.dot(A, mu)
@@ -31,8 +36,6 @@ def objective(mu, A, mu_p, A_p, N_A, N_Z):
 
 def fixed_w_grid_search(mu, A, w, div=21, div2=11, solver=cp.CLARABEL, verbose=True):
     n, k = A.shape
-    if n != 2 or k != 3:
-        raise NotImplementedError
     
     N_A = w
     N_Z = np.dot(A.T, w)
@@ -250,8 +253,8 @@ def optimize_solved_mu(mu, A, N_A, N_Z, method=None, verbose=True):
         denom = 0
         for j in range(k):
             denom += (A_p[i_star][j] - A_p[s][j])**2 / N_Z[j]
-            
-        delta = np.dot(A_p[i_star], mu) - np.dot(A_p[s], mu) 
+        
+        delta = max(np.dot(A_p[i_star], mu) - np.dot(A_p[s], mu), 0.0)
         result += (delta**2 / (2*denom) if denom != 0 else np.inf)
 
         return result
@@ -271,6 +274,7 @@ def optimize_solved_mu(mu, A, N_A, N_Z, method=None, verbose=True):
         if s == i_star:
             continue
 
+        # TODO: have only 2 rows of the matrix as variables
         result = minimize(
             solved_mu_objective, 
             x0=np.reshape(A, (n*k)).tolist(), 
@@ -291,6 +295,19 @@ def optimize_solved_mu(mu, A, N_A, N_Z, method=None, verbose=True):
             obj_star = obj
             mu_star = mu_p
             A_star = A_p
+    
+    
+    A_p_list = [0.22294661, 0.77705339, 0.22294653, 0.77705346]
+    A_p = np.array(A_p_list).reshape((n, k))
+    mu_p = optimal_mu(mu, A, N_A, A_p, 0)
+    
+    # print(mu_p)
+    print(
+        solved_mu_objective(np.reshape(A_star, (n*k)).tolist(), 0), 
+        objective(mu, A, mu_star, A_star, N_A, N_Z),
+        solved_mu_objective(A_p_list, 0),
+        objective(mu, A, mu_p, A_p, N_A, N_Z)
+    )
 
     return obj_star, mu_star, A_star
 
@@ -362,7 +379,9 @@ def optimize(mu, A, alg="scipy", verbose=False):
     return optimization_alg(mu, A, verbose=verbose)
 
 
-def create_testset_fixed_w(n, k, cnt, output_path="instances/fixed_w_testset.json"):
+def create_testset_fixed_w(n, k, cnt):
+    output_path = TESTSET_DIR + f"fixed_w_n={n}_k={k}.json"
+    
     with open(output_path, "r") as F:
         testset = json.load(F)
     
@@ -392,7 +411,9 @@ def create_testset_fixed_w(n, k, cnt, output_path="instances/fixed_w_testset.jso
     return testset
 
 
-def create_testset(n, k, cnt, output_path="instances/opt_testset.json"):
+def create_testset(n, k, cnt):
+    output_path = TESTSET_DIR + f"opt_n={n}_k={k}.json"
+    
     with open(output_path, "r") as F:
         testset = json.load(F)
     
@@ -418,6 +439,18 @@ def create_testset(n, k, cnt, output_path="instances/opt_testset.json"):
     return testset
 
 
+def prep_testest(testset_path):
+    file_path = Path(testset_path)
+    if not file_path.exists():
+        with file_path.open('w') as F:
+            json.dump([], F)
+    
+    with open(testset_path, 'r') as F:
+        testset = json.load(F)
+    
+    return testset
+
+
 def display_results_fixed_w(obj_star, mu_star, A_star, file=None):
     print("minimum achieved:", obj_star, file=file)
     print("optimal mu:", file=file)
@@ -431,23 +464,23 @@ def display_results(obj_star, w_star, file=None):
     print(w_star, file=file)
 
 
-def test_method_fixed_w(n, k, name="grid", experiment_cnt=10, rep=1, testset_path="instances/fixed_w_testset.json"):
+def test_method_fixed_w(n, k, name="grid", experiment_cnt=10, rep=1):
     ALGS = {
         "coordinate": coordinate_descent,
-        "solved_mu_COBYQA": COBYQA_solved_mu,
-        "solved_mu_SLSQP": SLSQP_solved_mu,
+        "COBYQA": COBYQA_solved_mu,
+        "SLSQP": SLSQP_solved_mu,
         "grid": fixed_w_grid_search
     }
+    testset_path = TESTSET_DIR + f"fixed_w_n={n}_k={k}.json"
     output_path=f"results/fixed_w_{name}.txt"
     optimization_alg: function = ALGS[name]
     
-    with open(testset_path, 'r') as F:
-        testset = json.load(F)
-    
+    testset = prep_testest(testset_path)
     if experiment_cnt > len(testset):
         testset = create_testset_fixed_w(n, k, experiment_cnt-len(testset))
     
     with open(output_path, 'w') as F:
+        print(f"~~~~~~~~~~ testing on n={n}, k={k}, {experiment_cnt} times", file=F)
         suboptimal_gaps = {}
         fail_cnt = 0
         for iter in tqdm(range(experiment_cnt), "testing"):
@@ -473,11 +506,11 @@ def test_method_fixed_w(n, k, name="grid", experiment_cnt=10, rep=1, testset_pat
                 print(f"##### succeeded test {iter} with {alg_obj - obj_star} gap!", file=F)
             
             print(f"mu:\n{mu}\nA:\n{A}\nw:\n{w}", file=F)
-            print("#" * 20, "ground truth", "#" * 20, file=F)
+            print("-" * 20, "ground truth", "-" * 20, file=F)
             display_results_fixed_w(obj_star, mu_star, A_star, file=F)
-            print("#" * 20, name, "#" * 20, file=F)
+            print("-" * 20, name, "-" * 20, file=F)
             display_results_fixed_w(alg_obj, alg_mu, alg_A, file=F)
-            print("-" * 60, file=F)
+            print("#" * 60, file=F)
         
         print("#" * 20, "final success rate:", 1 - fail_cnt / experiment_cnt, file=F)
         print("#" * 20, "average suboptimality gap:", sum(suboptimal_gaps.values()) / experiment_cnt, file=F)
@@ -491,12 +524,11 @@ def test_method_fixed_w(n, k, name="grid", experiment_cnt=10, rep=1, testset_pat
     fig.show()
 
 
-def test_method(n, k, name="", experiment_cnt=10, rep=1, testset_path="instances/opt_testset.json"):
+def test_method(n, k, name="", experiment_cnt=10, rep=1):
+    testset_path = TESTSET_DIR + f"opt_n={n}_k={k}.json"
     output_path=f"results/opt_{name}.txt"
     
-    with open(testset_path, 'r') as F:
-        testset = json.load(F)
-    
+    testset = prep_testest(testset_path)
     if experiment_cnt > len(testset):
         testset = create_testset(n, k, experiment_cnt-len(testset))
     
@@ -524,11 +556,11 @@ def test_method(n, k, name="", experiment_cnt=10, rep=1, testset_path="instances
                 print(f"##### succeeded test {iter} with {obj_star - alg_obj} gap!", file=F)
             
             print(f"mu:\n{mu}\nA:\n{A}", file=F)
-            print("#" * 20, "ground truth", "#" * 20, file=F)
+            print("-" * 20, "ground truth", "-" * 20, file=F)
             display_results(obj_star, w_star, file=F)
-            print("#" * 20, name, "#" * 20, file=F)
+            print("-" * 20, name, "-" * 20, file=F)
             display_results(alg_obj, alg_w, file=F)
-            print("-" * 60, file=F)
+            print("#" * 60, file=F)
         
         print("#" * 20, "final success rate:", 1 - fail_cnt / experiment_cnt, file=F)
         print("#" * 20, "average suboptimality gap:", sum(suboptimal_gaps.values()) / experiment_cnt, file=F)
@@ -556,9 +588,11 @@ def optimize_instance(index):
 if __name__ == "__main__":
     args = get_optimization_arguments()
     if args.instance_index is None:
+        n = int(input("set arm count:"))
+        k = int(input("set context count:"))
         if args.fixed_w:
-            test_method_fixed_w(2, 3, experiment_cnt=args.experiment_cnt, name=args.name)
+            test_method_fixed_w(n, k, experiment_cnt=args.experiment_cnt, name=args.name)
         else:
-            test_method(2, 3, experiment_cnt=args.experiment_cnt, name=args.name)
+            test_method(n, k, experiment_cnt=args.experiment_cnt, name=args.name)
     else:
         optimize_instance(index=args.instance_index)
