@@ -5,9 +5,10 @@ from utils import *
 
 class Environment:
     
-    def __init__(self, mus, A, algorithm, n, k, confidence, mode = {'use_optimized_p': False, 'average_w': False, 'average_points_played': False}, stopping_rule = 'd_stopping_rule'):
+    def __init__(self, mus, A, algorithm, tracking, n, k, confidence, mode = {'use_optimized_p': False, 'average_w': False, 'average_points_played': False}):
 
         self.algorithm = algorithm
+        self.tracking = tracking
         self.mus = mus  # mean reward of each context
         self.A = A  # context given arm probabilty matrix
         self.n = n
@@ -22,11 +23,8 @@ class Environment:
         self.delta = self.means[self.best_arm] - self.means
         
         # self.optimal_W, self.T_star = self.optimal_weight()
-        # self.T_star = 0.5 / self.T_star  # NOTE: why 0.5??
         
-        self.log_period = 20  # every 20 iterations save the data of the arms played up to now and optimal w
-        
-        self.stopping_rule = stopping_rule  # for c-tracking 
+        self.log_period = 10  # every <log_period> iterations save the data of the arms played up to now and optimal w
 
 
     def take_action(self, action):
@@ -50,7 +48,15 @@ class Environment:
             
             while in_init or not alg.Stopping_Rule()[0]:
                 # Select an action using the algorithm
-                action, init = alg.C_Tracking()
+                if self.tracking == 'C':
+                    action, init = alg.C_Tracking()
+                elif self.tracking == 'G':
+                    action, init = alg.G_Tracking()
+                elif self.tracking == 'D':
+                    action, init = alg.D_Tracking()
+                else:
+                    print("INVALID TRACKING")
+                    return
                 
                 if in_init and not init:
                     in_init = False

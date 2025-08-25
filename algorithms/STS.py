@@ -212,38 +212,35 @@ class STS:
         return w_star
 
 
-    # def projected_c_optimal_w(self, w):
-        
-    #     eps = 0.5 / np.sqrt(self.n ** 2 + self.T)
+    def C_projection(self, w):
+        eps = 0.5/np.sqrt(self.n**2 + self.T)
 
-    #     v = cp.Variable(self.n)
-    #     t = cp.Variable()
+        v = cp.Variable(self.n)
+        t = cp.Variable()
 
-    #     objective = cp.Minimize(t)
+        objective = cp.Minimize(t)
 
-    #     # Constraints
-    #     constraints = [
-    #         v >= eps,   
-    #         v <= 1,     
-    #         cp.sum(v) == 1,    
-    #         v - w <= t,     
-    #         v - w >= -t 
-    #     ]
+        constraints = [
+            v >= eps,   
+            v <= 1,     
+            cp.sum(v) == 1,    
+            v - w <= t,     
+            v - w >= -t 
+        ]
 
-    #     problem = cp.Problem(objective, constraints)
+        problem = cp.Problem(objective, constraints)
 
-    #     try:
-    #         problem.solve()
-    #         if problem.status != cp.OPTIMAL:
-    #             self.optimization_failed_flag = True
-    #             return np.array([])
-    #     except Exception as e:
-    #         self.optimization_failed_flag = True
-    #         return np.array([])
+        try:
+            problem.solve()
+            if problem.status != cp.OPTIMAL:
+                self.optimization_failed_flag = True
+                return np.array([])
+        except Exception as e:
+            self.optimization_failed_flag = True
+            return np.array([])
 
-    #     # Return the projected vector
-    #     return v.value
-
+        return v.value
+    
 
     def C_Tracking(self):
         # Initialization phase
@@ -253,11 +250,37 @@ class STS:
 
         # C-tracking
         w = self.optimal_w()
+        w_projected = self.C_projection(w)
+            
+        self.sum_ws += w_projected/np.sum(w_projected)  # make sure w sums up to 1
+        
+        if self.mode["average_w"]:
+            target = (self.sum_ws)/ np.sum(self.sum_ws) * np.sum(self.N_A)  # some optimization rounds may have failed so scale up to match it
+        else:
+            target = w_projected * np.sum(self.N_A)
+        
+        result = target - self.N_A
+        return np.argmax(result), False
+
+
+    def D_Tracking(self):
+        # Initialization phase
+        if np.any(self.cnt_post_actions == 0):  # explore all of A
+            unexplored_a = np.where(self.cnt_post_actions == 0)
+            return unexplored_a[0][0], True
+        
+        # Forced exploration
+        if np.any(self.N_A < np.sqrt(self.T) - self.n/2):
+            unexplored_a = np.where(self.N_A < np.sqrt(self.T) - self.n/2)
+            return unexplored_a[0][0], False
+        
+        # Direct tracking
+        w = self.optimal_w()
             
         self.sum_ws += w/np.sum(w)  # make sure w sums up to 1
         
         if self.mode["average_w"]:
-            target = (self.sum_ws)/ np.sum(self.sum_ws) * np.sum(self.N_A) #some optimization rounds may have failed so scale up to match it
+            target = (self.sum_ws)/ np.sum(self.sum_ws) * np.sum(self.N_A)
         else:
             target = w * np.sum(self.N_A)
         
@@ -265,30 +288,40 @@ class STS:
         return np.argmax(result), False
 
 
-    # def G_Tracking(self):
-    #     # no need for exploration!
-    #     # if int(self.T**0.5) ** 2 == self.T:
-    #     #     return hidden_action_sampler(self.exploration_vector)
+    def G_projection(self, w, v):
+        if np.array_equal(w, v):  # already too close to w
+            return w
+        dir = w - v
+        t = np.divide(dir, w, out=np.zeros_like(w), where=dir!=0)
+        proj = w - dir / np.min(t)
+        return proj
+
+
+    def G_Tracking(self):
+        # Initialization phase
+        if np.any(self.cnt_post_actions == 0):  # explore all of A
+            unexplored_a = np.where(self.cnt_post_actions == 0)
+            return unexplored_a[0][0], True
         
-    #     w, _ = self.Optimal_W()
-    #     result = self.T * w - self.N_A
-    #     return np.argmax(result)
-
-
-    # def Initialization_Phase(self, mus, samples):
-    #     while np.any(self.N_Z == 0) or np.any(self.N_A == 0):
-    #         result = np.where(self.N_Z == 0)
-    #         j_prime = result[0][0]
-    #         i = np.argmax(self.A[:, j_prime])
-    #         j = hidden_action_sampler(self.A[i])
-    #         self.N_A[i] += 1
-    #         self.N_Z[j] += 1
-    #         self.sum_of_rewards[j] += samples[self.T] + mus[j]  # sample according to x ~ N(u, 1) === x = y + u , u ~ N(0, 1)
-    #         self.T += 1
-    #         # self.sum_ws += self.A[i]
-    #         self.sum_points_played += self.A[i]
-
-    #     return self.T
+        # Forced exploration
+        if np.sqrt(self.T) % 1 == 0:
+            # Selects an arm at random
+            arm = np.random.randint(0, self.n)
+            return arm, False
+        
+        # Direct tracking
+        w = self.optimal_w()     
+        w_projected = self.G_projection(w, self.N_A)
+            
+        self.sum_ws += w_projected/np.sum(w_projected)  # make sure w sums up to 1
+        
+        if self.mode["average_w"]:
+            target = (self.sum_ws)/ np.sum(self.sum_ws) * np.sum(self.N_A)  # some optimization rounds may have failed so scale up to match it
+        else:
+            target = w_projected * np.sum(self.N_A)
+        
+        result = target - self.N_A
+        return np.argmax(result), False
         
 
     def update(self, main_action, post_action, reward):

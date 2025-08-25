@@ -6,9 +6,10 @@ import numpy as np
 def get_arguments():
     parser = argparse.ArgumentParser(description="Parse variables simulate")
     
-    parser.add_argument("--Algorithm", type=str, required=False, default='STS', help="Description for var1 (e.g., a string variable)")
+    parser.add_argument("--Algorithm", type=str, required=False, default='STS')
     parser.add_argument("--instance_index", type=int, required=False, default=0)
     parser.add_argument("--store", type=bool, required=False, default=True)
+    parser.add_argument("--tracking", type=str, required=False, default='C')
     parser.add_argument("--use_optimized_p", type=bool, required=False, default=False) 
     parser.add_argument("--average_points_played", type=bool, required=False, default=False) 
     parser.add_argument("--average_w", type=bool, required=False, default=False)
@@ -18,7 +19,7 @@ def get_arguments():
 
 
 def get_optimization_arguments():
-    parser = argparse.ArgumentParser(description="Parse variables for optimization", add_help=True)
+    parser = argparse.ArgumentParser(description="Parse variables for optimization")
     
     parser.add_argument("--instance_index", type=int, default=None)
     parser.add_argument("--experiment_cnt", type=int, default=None)
@@ -104,20 +105,20 @@ def read_all_instances_from_json(dir_path = 'instances/'):
 def add_output_to_json(instance_number, args, mu_hats, N_times_seens, w_s, T, best_arm):
     path = f'results/instance_{instance_number}_'
     
-    path += args.Algorithm
+    path += args.Algorithm + "_" + args.tracking
     
-    if args.Algorithm == 'STS':
-        if args.use_optimized_p:
-            path += '_optimizedPTrue'
-        else:
-            if args.average_w:
-                path += '_averagedWTrue'
-            if args.average_points_played:
-                path += '_averagePointsPlayedTrue'
+    # if args.Algorithm == 'STS':
+    #     if args.use_optimized_p:
+    #         path += '_optimizedPTrue'
+    #     else:
+    #         if args.average_w:
+    #             path += '_averagedWTrue'
+    #         if args.average_points_played:
+    #             path += '_averagePointsPlayedTrue'
     
-    if args.Algorithm == 'STS_C_Tracking':
-        if args.stopping_rule == 'c_stopping_rule':
-            path += '_CStoppingRule'
+    # if args.Algorithm == 'STS_C_Tracking':
+    #     if args.stopping_rule == 'c_stopping_rule':
+    #         path += '_CStoppingRule'
 
     instance = {
         "mu_hats": mu_hats,
