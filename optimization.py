@@ -230,16 +230,10 @@ def optimal_w(mu, A, mu_p, A_p, solver=None):
         return None
 
 
-def coordinate_descent(mu, A, w, iters=10, verbose=True):
+def multipoint(mu, A, w, verbose=True):
     n, k = A.shape
-    # A_p = np.random.rand(n, k)
-    # mu_p = np.random.rand(k)
-    A_p = A
-    mu_p = mu
     
     i_star, _ = best_arm(mu, A)
-
-    objectives = []
     
     obj_star = np.inf
     mu_star, A_star = None, None
@@ -247,26 +241,61 @@ def coordinate_descent(mu, A, w, iters=10, verbose=True):
         if s == i_star:
             continue
         
+        # mu change
+        mu_p = optimal_mu(mu, A, w, A, s)
+        obj = objective(mu, A, mu_p, A, w, np.dot(A.T, w))
+        if obj < obj_star:
+            obj_star = obj
+            mu_star = mu_p
+            A_star = A
+        
+        # A change
+        A_p = optimal_A(mu, A, w, mu, s)
+        obj = objective(mu, A, mu, A_p, w, np.dot(A.T, w))
+        if obj < obj_star:
+            obj_star = obj
+            mu_star = mu
+            A_star = A_p
+
+    return obj_star, mu_star, A_star
+
+
+def coordinate_descent(mu, A, w, iters=5, verbose=True):
+    n, k = A.shape
+    
+    i_star, _ = best_arm(mu, A)
+    
+    obj_star = np.inf
+    mu_star, A_star = None, None
+    for s in tqdm(range(n), desc="coordinate_descent", disable=~verbose):
+        if s == i_star:
+            continue
+        
+        # mu first
+        A_p = A
+        mu_p = mu
         for _ in range(iters):
             mu_p = optimal_mu(mu, A, w, A_p, s)
             A_p = optimal_A(mu, A, w, mu_p, s)
-            # print("objective:")
-            # print(objective(mu, A, mu_p, A_p, w, np.dot(A.T, w)))
-            # print("mu:")
-            # print(mu_p)
-            # print("A:")
-            # print(A_p)
-            objectives.append(objective(mu, A, mu_p, A_p, w, np.dot(A.T, w)))
         
         obj = objective(mu, A, mu_p, A_p, w, np.dot(A.T, w))
         if obj < obj_star:
             obj_star = obj
             mu_star = mu_p
             A_star = A_p
-    
-    # print(objectives)
-    # plt.plot(range(iters), objectives)
-    # plt.show()
+        
+        # A first
+        A_p = A
+        mu_p = mu
+        for _ in range(iters):
+            A_p = optimal_A(mu, A, w, mu_p, s)
+            mu_p = optimal_mu(mu, A, w, A_p, s)
+        
+        obj = objective(mu, A, mu_p, A_p, w, np.dot(A.T, w))
+        if obj < obj_star:
+            obj_star = obj
+            mu_star = mu_p
+            A_star = A_p
     
     return obj_star, mu_star, A_star
 
@@ -581,6 +610,7 @@ def test_method_fixed_w(n, k, name="grid", experiment_cnt=10, rep=1):
         "COBYQA": COBYQA_solved_mu,
         "SLSQP": SLSQP_solved_mu,
         "grid": fixed_w_grid_search,
+        "multipoint": multipoint,
         "lowerbound": lowerbound_fixed_w
     }
     testset_path = TESTSET_DIR + f"fixed_w_n={n}_k={k}.json"
