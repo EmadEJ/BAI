@@ -80,7 +80,9 @@ class Environment:
                     betas.append(beta_t)
                     
                     print(f"lambda_lb_t: {lambda_lb_t}, lambda_hat_t: {lambda_t}, beta_t: {beta_t}, confidence: {self.confidence}")
-                    print(f"Round {self.T}, action {action}, post_action {post_action}, reward {reward}, w: {w}")
+                    print(f"Round {self.T}, action {action}, post_action {post_action}, reward {reward}")
+                    print(f"w: {w}")
+                    print(f"means: {alg.get_means_hat()}")
                     print("#" * 50)
                 
             _, lambda_lb_t, _ = alg.stopping_rule_lb()

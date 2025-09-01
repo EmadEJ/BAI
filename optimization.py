@@ -378,8 +378,12 @@ def optimize_solved_mu(mu, A, N_A, N_Z, method=None, verbose=False):
         if np.abs(result.fun - obj) > 1e-6:
             print("something fishy going on")
             print(obj, result.fun)
-            print("A_p", A_p)
-            print("mu_p", mu_p)
+            print("A:", A)
+            print("mu:", mu)
+            print("N_A:", N_A)
+            print("N_Z:", N_Z)
+            print("A_p:", A_p)
+            print("mu_p:", mu_p)
         
         if obj < obj_star:
             obj_star = obj

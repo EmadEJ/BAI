@@ -32,6 +32,10 @@ class STS:
     def get_A_hat(self):
         return self.cnt_post_actions / self.N_A.reshape((self.n, 1))
     
+    
+    def get_means_hat(self):
+        return self.get_A_hat() @ self.get_mu_hat()
+
 
     def best_empirical_arm_calculator(self):
         mu_hat = self.get_mu_hat()
