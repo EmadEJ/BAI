@@ -1,7 +1,7 @@
 from utils import *
 from scipy.optimize import linprog
 from cvxpy.error import SolverError
-from optimization import optimize, optimize_GLR
+from optimization import optimize, optimize_GLR, lowerbound_GLR
 
 class STS:
     def __init__(self, n, k, confidence, mode = {'use_optimized_p': False, 'average_w': False, 'average_points_played': False}):
@@ -49,6 +49,13 @@ class STS:
         A_hat = self.get_A_hat()
         obj_star, mu_star, A_star = optimize_GLR(mu_hat, A_hat, self.N_A, self.N_Z)
         return obj_star
+    
+    
+    def lambda_lb(self):
+        mu_hat = self.get_mu_hat()
+        A_hat = self.get_A_hat()
+        obj_star = lowerbound_GLR(mu_hat, A_hat, self.N_A, self.N_Z)
+        return obj_star
 
 
     def beta_t_mu(self, delta):
@@ -63,12 +70,17 @@ class STS:
             (self.k-1) * sum([np.log(np.e * (1 + self.N_A[i] / (self.k-1))) for i in range(self.n)])
         )
 
-    def Stopping_Rule(self):
+    def stopping_rule(self):
         # returns True if need to stop and are enough confident
         lambda_hat_t = self.lambda_hat() 
         beta_t = self.beta_t_mu(self.confidence / 2) + self.beta_t_mu(self.confidence / 2)
         return lambda_hat_t > beta_t, lambda_hat_t, beta_t
 
+
+    def stopping_rule_lb(self):
+        lambda_lb = self.lambda_lb()
+        beta_t = self.beta_t_mu(self.confidence / 2) + self.beta_t_mu(self.confidence / 2)
+        return lambda_lb > beta_t, lambda_lb, beta_t
 
     # def optimization_line_coefficient(self, w_t, v_k): 
     #     w_t = np.asarray(w_t)

@@ -13,7 +13,6 @@ from pathlib import Path
 TESTSET_DIR = "testsets/"
 
 TOL = 1e-4  # used for checking whether the optimization was good enough
-INF = 1e-9
 
 
 def best_arm(mu, A):
@@ -272,10 +271,14 @@ def coordinate_descent(mu, A, w, iters=10, verbose=True):
     return obj_star, mu_star, A_star
 
 
+def lowerbound_fixed_w(mu, A, w, verbose=False):
+    return lowerbound_GLR(mu, A, w, np.dot(A.T, w)), None, None
+
+
 def optimize_solved_mu(mu, A, N_A, N_Z, method=None, verbose=False):
     n, k = A.shape
     i_star, _ = best_arm(mu, A)
-    
+
     def solved_mu_objective(A_p_list, s):  # assumes gaussian
         A_p = np.array(A_p_list).reshape((n, k))
         
@@ -380,7 +383,7 @@ def optimize_scipy(mu, A, method="COBYQA", inner_method="SLSQP", verbose=True):
     def neg_optimize_fixed_w(w, mu, A, method):
         return -optimize_solved_mu(mu, A, w, np.dot(A.T, w), method)[0]
 
-    bounds = Bounds([0 for _ in range(n)], [1.0 for _ in range(n)])
+    bounds = Bounds([1e-6 for _ in range(n)], [1.0 for _ in range(n)])
     constraints = LinearConstraint([[1.0 for _ in range(n)]], [1.0], [1.0])
     
     result = minimize(
@@ -408,14 +411,62 @@ def adverserial_descent(mu, A, iters=10, method="SLSQP", verbose=True):
 
     objs = []
     for _ in tqdm(range(iters), disable=not verbose):
-        obj_star, mu_star, A_star = optimize_solved_mu(mu, A, w_star, method=method)
+        obj_star, mu_star, A_star = optimize_solved_mu(mu, A, w_star, np.dot(A.T, w_star), method=method)
         objs.append(obj_star)
 
         w_star = optimal_w(mu, A, mu_star, A_star)
         
-    obj_star, _, _ = optimize_solved_mu(mu, A, w_star, method=method)
+    obj_star, _, _ = optimize_solved_mu(mu, A, w_star, np.dot(A.T, w_star), method=method)
     
     return obj_star, w_star
+
+
+def lowerbound_GLR(mu, A, N_A, N_Z):
+    c_m = 0.5  # assumed gaussian distribution
+    n, k = A.shape
+    
+    means = np.dot(A, mu)
+    i_star = np.argmax(means)    
+    s = np.argsort(means)[-2]
+    
+    delta_s = means[i_star] - means[s]
+    denom = 1/(2 * N_A[s]) + 1/(2 * N_A[i_star]) + sum([1/(c_m * N_Z[i]) for i in range(k)])
+
+    return delta_s**2 / denom
+
+
+def lowerbound_optimize(mu, A):
+    c_m = 0.5  # assumed gaussian distribution
+    n, k = A.shape
+    
+    means = np.dot(A, mu)
+    i_star = np.argmax(means)    
+    s = np.argsort(means)[-2]
+    
+    w = cp.Variable(n)
+
+    objective = cp.Minimize(
+        cp.inv_pos(w[i_star]) / 2 + 
+        cp.inv_pos(w[s]) / 2 + 
+        cp.sum(cp.inv_pos(A.T @ w)) / c_m
+    )
+    constraints = [
+        cp.sum(w) == 1,
+        w >= 0
+    ]
+    problem = cp.Problem(objective, constraints)
+    
+    try:
+        problem.solve()
+        w_star = w.value
+        if problem.status in [cp.OPTIMAL, cp.OPTIMAL_INACCURATE]:
+            return lowerbound_GLR(mu, A, w_star, np.dot(A.T, w_star)), w_star
+        else:
+            print("non optimal value at w")
+            return None, None
+    except:
+        print("failed optimization at w")
+        return None, None
 
 
 def optimize_GLR(mu, A, N_A, N_Z, alg="solved_mu"):
@@ -529,7 +580,8 @@ def test_method_fixed_w(n, k, name="grid", experiment_cnt=10, rep=1):
         "coordinate": coordinate_descent,
         "COBYQA": COBYQA_solved_mu,
         "SLSQP": SLSQP_solved_mu,
-        "grid": fixed_w_grid_search
+        "grid": fixed_w_grid_search,
+        "lowerbound": lowerbound_fixed_w
     }
     testset_path = TESTSET_DIR + f"fixed_w_n={n}_k={k}.json"
     output_path=f"results/fixed_w_{name}.txt"
@@ -545,6 +597,7 @@ def test_method_fixed_w(n, k, name="grid", experiment_cnt=10, rep=1):
     with open(output_path, 'w') as F:
         print(f"~~~~~~~~~~ testing on n={n}, k={k}, {experiment_cnt} times", file=F)
         suboptimal_gaps = {}
+        suboptimal_ratios = {}
         fail_cnt = 0
         for iter in tqdm(range(experiment_cnt), "testing"):
             experiment = testset[iter]
@@ -562,6 +615,7 @@ def test_method_fixed_w(n, k, name="grid", experiment_cnt=10, rep=1):
                     alg_obj, alg_mu, alg_A = result
 
             suboptimal_gaps[iter] = alg_obj - obj_star
+            suboptimal_ratios[iter] = alg_obj / obj_star
             if obj_star + TOL < alg_obj:
                 fail_cnt += 1
                 print(f"##### failed test {iter} with {alg_obj - obj_star} gap!", file=F)
@@ -577,11 +631,16 @@ def test_method_fixed_w(n, k, name="grid", experiment_cnt=10, rep=1):
         
         print("#" * 20, "final success rate:", 1 - fail_cnt / experiment_cnt, file=F)
         print("#" * 20, "average suboptimality gap:", sum(suboptimal_gaps.values()) / experiment_cnt, file=F)
+        print("#" * 20, "average suboptimality ratio:", sum(suboptimal_ratios.values()) / experiment_cnt, file=F)
         print("### suboptimality gaps:", file=F)
         print(suboptimal_gaps, file=F)
+        print("### suboptimality ratios:", file=F)
+        print(suboptimal_ratios, file=F)
         
         print("final success rate:", 1 - fail_cnt / experiment_cnt)
         print("average suboptimality gap:", sum(suboptimal_gaps.values()) / experiment_cnt)
+        print("average suboptimality ratio:", sum(suboptimal_ratios.values()) / experiment_cnt)
+
     
     fig = px.box(x=suboptimal_gaps.values(), title=f"{name} suboptimality gaps")
     fig.show()

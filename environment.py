@@ -39,6 +39,7 @@ class Environment:
         A_hats = []
         w_s = []
         N_times_seens = []
+        lambda_lbs = []
         lambdas = []
         betas = []
         
@@ -46,7 +47,7 @@ class Environment:
             alg = STS(self.n, self.k, self.confidence, self.mode)  # shouldn't get A
             in_init = True
             
-            while in_init or not alg.Stopping_Rule()[0]:
+            while in_init or not alg.stopping_rule_lb()[0]:
                 # Select an action using the algorithm
                 if self.tracking == 'C':
                     action, init = alg.C_Tracking()
@@ -72,18 +73,22 @@ class Environment:
                     A_hats.append(alg.get_A_hat().tolist())
                     N_times_seens.append(alg.N_A.tolist())
 
-                    _, lambda_t, beta_t = alg.Stopping_Rule()
+                    _, lambda_lb_t, _ = alg.stopping_rule_lb()
+                    _, lambda_t, beta_t = alg.stopping_rule()
+                    lambda_lbs.append(lambda_lb_t)
                     lambdas.append(lambda_t)
                     betas.append(beta_t)
                     
-                    print(f"lambda_hat_t: {lambda_t}, beta_t: {beta_t}, confidence: {self.confidence}")
+                    print(f"lambda_lb_t: {lambda_lb_t}, lambda_hat_t: {lambda_t}, beta_t: {beta_t}, confidence: {self.confidence}")
                     print(f"Round {self.T}, action {action}, post_action {post_action}, reward {reward}, w: {w}")
                     print("#" * 50)
                 
-            _, lambda_t, beta_t = alg.Stopping_Rule()
+            _, lambda_lb_t, _ = alg.stopping_rule_lb()
+            _, lambda_t, beta_t = alg.stopping_rule()
+            lambda_lbs.append(lambda_lb_t)
             lambdas.append(lambda_t)
             betas.append(beta_t)
             best_arm, _, _ = alg.best_empirical_arm_calculator()
             print(f"number of failed optimization rounds is {alg.optimization_failed_number_of_rounds}")
         
-        return best_arm, mu_hats, N_times_seens, w_s, lambdas, betas, self.T
+        return best_arm, mu_hats, N_times_seens, w_s, lambda_lbs, lambdas, betas, self.T

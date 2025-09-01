@@ -3,16 +3,6 @@ import cvxpy as cp
 import matplotlib.pyplot as plt
 
 
-def SecondMin(arr):
-    n = len(arr)
-    smallest = np.min(arr)
-    second_smallest = 100000
-    for i in range(n):
-        if second_smallest > arr[i] and arr[i] != smallest:
-            second_smallest = arr[i]
-    return second_smallest
-
-
 def Cg(x):
     return x + np.log(x)
 
