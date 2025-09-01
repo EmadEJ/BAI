@@ -304,6 +304,10 @@ def lowerbound_fixed_w(mu, A, w, verbose=False):
     return lowerbound_GLR(mu, A, w, np.dot(A.T, w)), None, None
 
 
+def my_lowerbound_fixed_w(mu, A, w, verbose=False):
+    return my_lowerbound_GLR(mu, A, w, np.dot(A.T, w)), None, None
+
+
 def optimize_solved_mu(mu, A, N_A, N_Z, method=None, verbose=False):
     n, k = A.shape
     i_star, _ = best_arm(mu, A)
@@ -450,6 +454,55 @@ def adverserial_descent(mu, A, iters=10, method="SLSQP", verbose=True):
     return obj_star, w_star
 
 
+def my_lowerbound_GLR(mu, A, N_A, N_Z, EPS=1e-6):
+    n, k = A.shape
+    means = np.dot(A, mu)
+    i_star = np.argmax(means)    
+    
+    for s in range(n):
+        if s == i_star:
+            continue
+        delta_s = means[i_star] - means[s]
+        Ai_p = cp.Variable(k)
+        As_p = cp.Variable(k)
+        mu_p = cp.Variable(k)
+        alpha = cp.Variable(k)
+        
+        d_Ai = N_A[i_star] * cp.sum(cp.rel_entr(A[i_star], Ai_p))
+        d_As = N_A[s] * cp.sum(cp.rel_entr(A[s], As_p))
+        d_mu = cp.sum(cp.multiply(N_Z, cp.square(mu - mu_p))) / 2  # assume gaussian
+        
+        constraints = [
+            cp.sum(alpha) == delta_s,
+            Ai_p >= EPS,
+            cp.sum(Ai_p) == 1,
+            As_p >= EPS,
+            cp.sum(As_p) == 1,
+            mu_p >= 0,
+            mu_p <= 1,
+        ]
+        for j in range(k):
+            # McCormick Relaxations
+            constraints.append(alpha[j] >= -mu_p[j])
+            constraints.append(alpha[j] <= mu_p[j])
+            constraints.append(alpha[j] >= As_p[j] - Ai_p[j] + mu_p[j] - 1)
+            constraints.append(alpha[j] <= As_p[j] - Ai_p[j] - mu_p[j] + 1)
+        
+        problem = cp.Problem(cp.Minimize(d_Ai + d_As + d_mu), constraints)
+        
+        try:
+            problem.solve()
+            if problem.status in [cp.OPTIMAL, cp.OPTIMAL_INACCURATE]:
+                return problem.value
+            else:
+                print("non optimal value at glr")
+                return None
+        except:
+            print("failed optimization at glr")
+            return None
+        
+
+
 def lowerbound_GLR(mu, A, N_A, N_Z):
     c_m = 0.5  # assumed gaussian distribution
     n, k = A.shape
@@ -491,10 +544,10 @@ def lowerbound_optimize(mu, A):
         if problem.status in [cp.OPTIMAL, cp.OPTIMAL_INACCURATE]:
             return lowerbound_GLR(mu, A, w_star, np.dot(A.T, w_star)), w_star
         else:
-            print("non optimal value at w")
+            print("non optimal value at glr")
             return None, None
     except:
-        print("failed optimization at w")
+        print("failed optimization at glr")
         return None, None
 
 
@@ -611,7 +664,8 @@ def test_method_fixed_w(n, k, name="grid", experiment_cnt=10, rep=1):
         "SLSQP": SLSQP_solved_mu,
         "grid": fixed_w_grid_search,
         "multipoint": multipoint,
-        "lowerbound": lowerbound_fixed_w
+        "lowerbound": lowerbound_fixed_w,
+        "my_lowerbound": my_lowerbound_fixed_w
     }
     testset_path = TESTSET_DIR + f"fixed_w_n={n}_k={k}.json"
     output_path=f"results/fixed_w_{name}.txt"
