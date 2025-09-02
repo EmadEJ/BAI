@@ -1,11 +1,12 @@
 import numpy as np
 import cvxpy as cp
+import spsa
 from tqdm import tqdm
-# from tqdm.contrib import itertools
 import itertools
 from utils import *
 from io_utils import *
 from scipy.optimize import minimize, Bounds, LinearConstraint
+from scipy.special import softmax
 import plotly.express as px
 from pathlib import Path
 
@@ -423,9 +424,11 @@ def optimize_scipy(mu, A, method="COBYQA", inner_method="SLSQP", verbose=True):
     bounds = Bounds([1e-6 for _ in range(n)], [1.0 for _ in range(n)])
     constraints = LinearConstraint([[1.0 for _ in range(n)]], [1.0], [1.0])
     
+    w0 = np.random.rand(n)
+    w0 = w0 / np.sum(w0)
     result = minimize(
             neg_optimize_fixed_w, 
-            x0=np.random.rand(n), 
+            x0=w0, 
             args=(mu, A, inner_method), 
             bounds=bounds, 
             constraints=constraints,
@@ -434,8 +437,97 @@ def optimize_scipy(mu, A, method="COBYQA", inner_method="SLSQP", verbose=True):
         )
     
     w_star = result.x
-    obj_star, mu_star, A_star = optimize_solved_mu(mu, A, w_star, np.dot(A.T, w_star), method)
+    obj_star, mu_star, A_star = optimize_solved_mu(mu, A, w_star, np.dot(A.T, w_star), inner_method)
     
+    return obj_star, w_star
+
+
+def optimize_scipy_softmax(mu, A, method="Nelder-Mead", inner_method="SLSQP", verbose=True):
+    n, k = A.shape
+    
+    w0 = np.random.rand(n)
+    w0 = w0 / np.sum(w0)
+    
+    def fun(w):
+        w_normalized = softmax(w)
+        return -optimize_solved_mu(mu, A, w_normalized, np.dot(A.T, w_normalized), inner_method)[0]
+    
+    w0 = np.random.rand(n)
+    w0 = w0 / np.sum(w0)
+    result = minimize(
+            fun, 
+            x0=w0, 
+            method=method,
+            options={'disp': verbose, 'fatol': TOL}
+        )
+    
+    w_star = softmax(result.x)
+    obj_star, mu_star, A_star = optimize_solved_mu(mu, A, w_star, np.dot(A.T, w_star), inner_method)
+
+    return obj_star, w_star
+
+
+def optimize_scipy_grad(mu, A, method="BFGS", inner_method="SLSQP", verbose=True):
+    n, k = A.shape
+    
+    w0 = np.random.rand(n)
+    w0 = w0 / np.sum(w0)
+    
+    def fun(w):
+        w_soft = softmax(w)
+        return -optimize_solved_mu(mu, A, w_soft, np.dot(A.T, w_soft), inner_method)[0]
+    
+    def jac(w):
+        w_soft = softmax(w)
+                
+        obj_star, mu_star, A_star = optimize_solved_mu(mu, A, w_soft, np.dot(A.T, w_soft), inner_method)
+        i_star, _ = best_arm(mu, A)
+        s, _ = best_arm(mu_star, A_star)
+        if i_star == s:
+            # This happens when mean of s and i_star equal exactly
+            # Replace s with the second biggest value
+            sorted_arms = np.argsort(np.dot(A_star, mu_star))
+            if sorted_arms[-1] == i_star:
+                s = sorted_arms[-2]
+            else:
+                s = sorted_arms[-1]
+        
+        d_mu = np.square(mu - mu_star) / 2
+        grad = A @ d_mu
+        grad[i_star] += categorical_kl(A[i_star], A_star[i_star])
+        grad[s] += categorical_kl(A[s], A_star[s])
+        
+        grad = np.multiply(w_soft, (grad - np.dot(w_soft, grad)))  # accounting for softmax
+                
+        return -grad
+    
+    w0 = np.random.rand(n)
+    w0 = w0 / np.sum(w0)
+    result = minimize(
+            fun=fun, 
+            jac=jac,
+            x0=w0, 
+            method=method,
+            options={"disp": verbose, "xrtol": TOL}
+        )
+    
+    if verbose and n == 2:
+        grid = np.linspace(0, 1, 101)
+        funs = []
+        jacs = []
+        for w_0 in grid:
+            w_p = np.array([w_0, 1 - w_0])
+            funs.append(-fun(w_p))
+            jacs.append(jac(w_p)[0])
+        
+        plt.plot(grid, funs, label="function")
+        plt.plot(grid, jacs, label="gradient")
+        plt.legend()
+        plt.show()
+    
+    w_star = softmax(result.x)
+    obj_star, mu_star, A_star = optimize_solved_mu(mu, A, w_star, np.dot(A.T, w_star), inner_method)
+
     return obj_star, w_star
 
 
@@ -456,6 +548,9 @@ def adverserial_descent(mu, A, iters=10, method="SLSQP", verbose=True):
     obj_star, _, _ = optimize_solved_mu(mu, A, w_star, np.dot(A.T, w_star), method=method)
     
     return obj_star, w_star
+
+
+###############################################################
 
 
 def my_lowerbound_GLR(mu, A, N_A, N_Z, EPS=1e-6):
@@ -506,14 +601,14 @@ def my_lowerbound_GLR(mu, A, N_A, N_Z, EPS=1e-6):
             return None
         
 
-
 def lowerbound_GLR(mu, A, N_A, N_Z):
     c_m = 0.5  # assumed gaussian distribution
     n, k = A.shape
     
     means = np.dot(A, mu)
-    i_star = np.argmax(means)    
-    s = np.argsort(means)[-2]
+    sorted_arms = np.argsort(means)
+    i_star = sorted_arms[-1]   
+    s = sorted_arms[-2]
     
     delta_s = means[i_star] - means[s]
     denom = 1/(2 * N_A[s]) + 1/(2 * N_A[i_star]) + sum([1/(c_m * N_Z[i]) for i in range(k)])
@@ -568,12 +663,17 @@ def optimize(mu, A, alg="scipy", verbose=False):
     ALGS = {
         "adverserial": adverserial_descent,
         "scipy": optimize_scipy,
+        "scipy_softmax": optimize_scipy_softmax,
+        "scipy_grad": optimize_scipy_grad,
         "ternary": ternary_search,
         "grid": grid_search
     }
     optimization_alg: function = ALGS[alg]
     
     return optimization_alg(mu, A, verbose=verbose)
+
+
+###############################################################
 
 
 def create_testset_fixed_w(n, k, cnt):
@@ -741,6 +841,8 @@ def test_method(n, k, name="", experiment_cnt=10, rep=1):
     ALGS = {
         "adverserial": adverserial_descent,
         "scipy": optimize_scipy,
+        "scipy_softmax": optimize_scipy_softmax,
+        "scipy_grad": optimize_scipy_grad,
         "ternary": ternary_search,
         "grid": grid_search
     }
