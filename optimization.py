@@ -158,13 +158,13 @@ def ternary_search(mu, A, EPS=1e-3, max_iter=20, solver=cp.CLARABEL, verbose=Tru
     return obj_star, w_star
 
 
-def optimal_mu(mu, A, w, A_p, s):
+def optimal_mu(mu, A, w, A_p, s, slack=0):
     n, k = A.shape
     i_star, _ = best_arm(mu, A)
     
     mu_p = cp.Variable(k)
     
-    constraint = [(A_p[s] - A_p[i_star]) @ mu_p >= 0]
+    constraint = [(A_p[s] - A_p[i_star]) @ mu_p >= 0 - slack]
     
     objective = 0.5 * cp.sum(cp.multiply(np.dot(w, A), cp.square(mu - mu_p)))
     
@@ -182,13 +182,13 @@ def optimal_mu(mu, A, w, A_p, s):
         return None
     
 
-def optimal_A(mu, A, w, mu_p, s, solver=None):
+def optimal_A(mu, A, w, mu_p, s, solver=None, slack=0):
     n, k = A.shape
     i_star, _ = best_arm(mu, A)
     
     A_p = cp.Variable((n, k))
     
-    constraints = [(A_p[s] - A_p[i_star]) @ mu_p >= 0]
+    constraints = [(A_p[s] - A_p[i_star]) @ mu_p >= 0 - slack]
     for i in range(n):
         constraints += [cp.sum(A_p[i]) == 1]
     
@@ -231,32 +231,51 @@ def optimal_w(mu, A, mu_p, A_p, solver=None):
         return None
 
 
-def multipoint(mu, A, w, verbose=True):
+def contribution_optimization(mu, A, w, verbose=True):
     n, k = A.shape
     
-    i_star, _ = best_arm(mu, A)
+    means = np.dot(A, mu)
+    i_star = np.argmax(means)
     
     obj_star = np.inf
     mu_star, A_star = None, None
-    for s in tqdm(range(n), desc="coordinate_descent", disable=~verbose):
+    for s in range(n):
         if s == i_star:
             continue
         
-        # mu change
-        mu_p = optimal_mu(mu, A, w, A, s)
-        obj = objective(mu, A, mu_p, A, w, np.dot(A.T, w))
-        if obj < obj_star:
-            obj_star = obj
-            mu_star = mu_p
-            A_star = A
+        delta_s = means[i_star] - means[s]
         
-        # A change
-        A_p = optimal_A(mu, A, w, mu, s)
-        obj = objective(mu, A, mu, A_p, w, np.dot(A.T, w))
-        if obj < obj_star:
-            obj_star = obj
-            mu_star = mu
-            A_star = A_p
+        objs_A = []
+        objs_mu = []
+        grid = np.linspace(0, 1, 101)
+        for A_contribution in grid:
+            mu_contribution = 1 - A_contribution
+            
+            # A first
+            A_p = optimal_A(mu, A, w, mu, s, slack=delta_s*mu_contribution)
+            mu_p = optimal_mu(mu, A, w, A_p, s)
+            obj = objective(mu, A, mu_p, A_p, w, np.dot(A.T, w))
+            objs_A.append(obj)
+            if obj < obj_star:
+                obj_star = obj
+                mu_star = mu_p
+                A_star = A_p
+                
+            # mu first
+            mu_p = optimal_mu(mu, A, w, A, s, slack=delta_s*A_contribution)
+            A_p = optimal_A(mu, A, w, mu_p, s)
+            obj = objective(mu, A, mu_p, A_p, w, np.dot(A.T, w))
+            objs_mu.append(obj)
+            if obj < obj_star:
+                obj_star = obj
+                mu_star = mu_p
+                A_star = A_p
+        
+        if True:
+            plt.plot(grid, objs_A, label="A first")
+            plt.plot(grid, objs_mu, label="mu first")
+            plt.legend()
+            # plt.show()
 
     return obj_star, mu_star, A_star
 
@@ -517,7 +536,7 @@ def optimize_scipy_grad(mu, A, method="BFGS", inner_method="SLSQP", verbose=True
         jacs = []
         for w_0 in grid:
             w_p = np.array([w_0, 1 - w_0])
-            funs.append(-fun(w_p))
+            funs.append(fun(w_p))
             jacs.append(jac(w_p)[0])
         
         plt.plot(grid, funs, label="function")
@@ -767,7 +786,7 @@ def test_method_fixed_w(n, k, name="grid", experiment_cnt=10, rep=1):
         "COBYQA": COBYQA_solved_mu,
         "SLSQP": SLSQP_solved_mu,
         "grid": fixed_w_grid_search,
-        "multipoint": multipoint,
+        "contribution": contribution_optimization,
         "lowerbound": lowerbound_fixed_w,
         "my_lowerbound": my_lowerbound_fixed_w
     }
@@ -799,6 +818,8 @@ def test_method_fixed_w(n, k, name="grid", experiment_cnt=10, rep=1):
             alg_obj, alg_mu, alg_A = np.inf, None, None
             for _ in range(rep):
                 result = optimization_alg(mu, A, w, verbose=False)
+                plt.axhline(y=obj_star, color="black", linestyle='--')
+                plt.show()
                 if result[0] < alg_obj:
                     alg_obj, alg_mu, alg_A = result
 
