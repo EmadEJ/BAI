@@ -1,21 +1,20 @@
 import numpy as np
+import matplotlib.pyplot as plt
+import time
+
 from utils import *
 from io_utils import *
 from environment import *
-import matplotlib.pyplot as plt
-import time
 
 def simulate(verbose=True):
     args = get_arguments()
     index = args.instance_index
     
     instance_path = f"instances/instance{index}.json"
-    n, k, confidence, mus, A, w_star, T_star = read_instance_from_json(instance_path)
+    n, k, confidence, mus, A = read_instance_from_json(instance_path)
     
     mode = {
-        'use_optimized_p': args.use_optimized_p,
         'average_w': args.average_w,
-        'average_points_played': args.average_points_played
     }
 
     st_time = time.time()

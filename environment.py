@@ -1,5 +1,5 @@
 import numpy as np
-import cvxpy as cp
+
 from algorithms.STS import *
 from utils import *
 
@@ -21,9 +21,7 @@ class Environment:
         self.means = np.dot(self.A, self.mus)
         self.best_arm = np.argmax(self.means)
         self.delta = self.means[self.best_arm] - self.means
-        
-        # self.optimal_W, self.T_star = self.optimal_weight()
-        
+                
         self.log_period = 10  # every <log_period> iterations save the data of the arms played up to now and optimal w
 
 
@@ -31,7 +29,6 @@ class Environment:
         post_action = hidden_action_sampler(self.A[action])
         reward = self.samples[self.T] + self.mus[post_action]    
         self.T += 1
-        
         return post_action, reward
 
     def loop(self):
@@ -43,11 +40,11 @@ class Environment:
         lambdas = []
         betas = []
         
-        if self.algorithm == 'STS': #Seperator Track and Stop            
+        if self.algorithm == 'STS':  # Seperator Track and Stop            
             alg = STS(self.n, self.k, self.confidence, self.mode)  # shouldn't get A
             in_init = True
             
-            while in_init or not alg.stopping_rule_lb()[0]:
+            while in_init or not alg.stopping_rule()[0]:
                 # Select an action using the algorithm
                 if self.tracking == 'C':
                     action, init = alg.C_Tracking()

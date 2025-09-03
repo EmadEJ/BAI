@@ -1,26 +1,21 @@
 from utils import *
-from scipy.optimize import linprog
-from cvxpy.error import SolverError
 from optimization import optimize, optimize_GLR, lowerbound_GLR
 
 class STS:
-    def __init__(self, n, k, confidence, mode = {'use_optimized_p': False, 'average_w': False, 'average_points_played': False}):
+    def __init__(self, n, k, confidence, mode = {'average_w': False}):
         self.n = n 
         self.k = k 
         self.T = 0 
         self.N_A = np.zeros(n)
-        self.cnt_post_actions = np.zeros((n, k))
         self.N_Z = np.zeros(k)
+        self.cnt_post_actions = np.zeros((n, k))
         self.sum_of_rewards = np.zeros(k)
         self.confidence = confidence
-        # self.exploration_vector = 1/n * np.ones(n)  # uniform random arm pull for exploration
         
         self.optimization_failed_flag = False
         self.optimization_failed_number_of_rounds = 0
         
         self.mode = mode
-        
-        # self.sum_points_played = np.zeros(k)
         
         self.sum_ws = np.zeros(n)
 
@@ -51,14 +46,14 @@ class STS:
     def lambda_hat(self):
         mu_hat = self.get_mu_hat()
         A_hat = self.get_A_hat()
-        obj_star, mu_star, A_star = optimize_GLR(mu_hat, A_hat, self.N_A, self.N_Z)
+        obj_star = optimize_GLR(mu_hat, A_hat, self.N_A, self.N_Z)[0]
         return obj_star
     
     
     def lambda_lb(self):
         mu_hat = self.get_mu_hat()
         A_hat = self.get_A_hat()
-        obj_star = lowerbound_GLR(mu_hat, A_hat, self.N_A, self.N_Z)
+        obj_star = lowerbound_GLR(mu_hat, A_hat, self.N_A, self.N_Z)[0]
         return obj_star
 
 
@@ -85,138 +80,6 @@ class STS:
         lambda_lb = self.lambda_lb()
         beta_t = self.beta_t_mu(self.confidence / 2) + self.beta_t_mu(self.confidence / 2)
         return lambda_lb > beta_t, lambda_lb, beta_t
-
-    # def optimization_line_coefficient(self, w_t, v_k): 
-    #     w_t = np.asarray(w_t)
-    #     v_k = np.asarray(v_k)
-    #     original_array = np.asarray(self.A)
-
-    #     def target_vector(alpha):
-    #         return (1 + alpha) * w_t - alpha * v_k
-
-    #     c = np.zeros(self.n + 1)  # n lambdas + 1 alpha
-    #     c[-1] = -1  # Coefficient for -alpha
-    # def optimization_for_p(self, w):
-    #     N_t = self.N_Z
-
-    #     lambda_ = cp.Variable(self.n)
-    #     p = self.A.T @ lambda_
-        
-    #     # ||N_t + p - w||^2 = ||p - (w - N_t)||^2
-    #     y = w - N_t  
-    #     objective = cp.Minimize(cp.norm((p + N_t)/(np.sum(N_t)+1) - w/np.sum(w), 2)**2)
-
-    #     constraints = [
-    #         lambda_ >= 0, 
-    #         cp.sum(lambda_) == 1
-    #     ]
-
-    #     problem = cp.Problem(objective, constraints)
-    #     problem.solve()
-
-    #     if problem.status not in ["optimal", "optimal_inaccurate"]:
-    #         raise ValueError(f"Solver failed: {problem.status}")
-
-    #     lambda_opt = lambda_.value  
-    #     p_opt = self.A.T @ lambda_opt 
-        
-    #     p_opt /= np.sum(p_opt)
-
-    #     return p_opt, lambda_opt
-
-    #     A_eq = np.zeros((self.k + 1, self.n + 1))
-    #     A_eq[:self.k, :self.n] = original_array.T
-    #     A_eq[:self.k, -1] = -(w_t - v_k) 
-    #     A_eq[self.k, :self.n] = 1  
-    #     A_eq[self.k, -1] = 0  # Alpha does not contribute to sum of lambdas
-
-    #     b_eq = np.zeros(self.k + 1)
-    #     b_eq[:self.k] = w_t
-    #     b_eq[self.k] = 1 
-
-    #     A_ub = np.zeros((self.n, self.n + 1))
-    #     A_ub[:, :self.n] = -np.eye(self.n)  # -lambda_i <= 0
-    #     b_ub = np.zeros(self.n)
-
-    #     bounds = [(0, None)] * self.n + [(None, None)]
-    #     result = linprog(c, A_ub=A_ub, b_ub=b_ub, A_eq=A_eq, b_eq=b_eq, bounds=bounds, method='highs')
-
-    #     if result.success:
-    #         return result.x[-1]  # alpha
-    #     else:
-    #         self.optimization_failed_flag = True
-    #         # raise ValueError("Optimization failed: " + result.message)
-    #         return None
-
-
-    # def optimization_for_Z_optimal_vector(self):
-    #     i_star, _, delta = self.best_empirical_arm_calculator()
-
-    #     lambda_var = cp.Variable(self.n, nonneg=True)  # Weights for convex combination
-    #     w = self.A.T @ lambda_var  # w is a convex combination of rows of A
-    #     t = cp.Variable()
-
-    #     constraints = [cp.sum(lambda_var) == 1]  # Convex combination constraint
-        
-    #     constraints += [w[j] >= 0 for j in range(self.k)]
-        
-    #     for i in range(self.n):
-    #         if i == i_star:
-    #             continue
-
-    #         middle = cp.sum([(self.A[i, j] - self.A[i_star, j])**2 * cp.inv_pos(w[j]) for j in range(self.k)])
-    #         constraints.append(
-    #             t >= middle / (delta[i] ** 2)
-    #         )
-
-    #     objective = cp.Minimize(t)
-    #     problem = cp.Problem(objective, constraints)
-        
-    #     try:
-    #         problem.solve()
-    #     except SolverError as e:
-    #         self.optimization_failed_flag = True
-
-    #     if problem.status not in ["optimal", "optimal_inaccurate"]:
-    #         self.optimization_failed_flag = True
-    #         #raise ValueError("Optimization problem did not converge.")
-    #         return 0, 0
-
-    #     # Return the optimal w and t
-    #     w_opt = w.value
-    #     w_opt /= np.sum(w_opt)
-    #     t_opt = t.value
-        
-    #     return w_opt, t_opt
-
-
-    # def optimization_for_p(self, w):
-    #     N_t = self.N_Z
-
-    #     lambda_ = cp.Variable(self.n)
-    #     p = self.A.T @ lambda_
-        
-    #     # ||N_t + p - w||^2 = ||p - (w - N_t)||^2
-    #     y = w - N_t  
-    #     objective = cp.Minimize(cp.norm((p + N_t)/(np.sum(N_t)+1) - w/np.sum(w), 2)**2)
-
-    #     constraints = [
-    #         lambda_ >= 0, 
-    #         cp.sum(lambda_) == 1
-    #     ]
-
-    #     problem = cp.Problem(objective, constraints)
-    #     problem.solve()
-
-    #     if problem.status not in ["optimal", "optimal_inaccurate"]:
-    #         raise ValueError(f"Solver failed: {problem.status}")
-
-    #     lambda_opt = lambda_.value  
-    #     p_opt = self.A.T @ lambda_opt 
-        
-    #     p_opt /= np.sum(p_opt)
-
-    #     return p_opt, lambda_opt
 
 
     def optimal_w(self):
