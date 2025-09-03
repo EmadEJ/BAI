@@ -190,8 +190,8 @@ class STS:
         
         # Direct tracking
         w = self.optimal_w()     
-        w_projected = self.G_projection(w, self.N_A)
-            
+        w_projected = self.G_projection(w, self.N_A / sum(self.N_A))
+                    
         self.sum_ws += w_projected/np.sum(w_projected)  # make sure w sums up to 1
         
         if self.mode["average_w"]:
