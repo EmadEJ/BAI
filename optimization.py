@@ -271,11 +271,11 @@ def contribution_optimization(mu, A, w, verbose=True):
                 mu_star = mu_p
                 A_star = A_p
         
-        if True:
+        if verbose:
             plt.plot(grid, objs_A, label="A first")
             plt.plot(grid, objs_mu, label="mu first")
             plt.legend()
-            # plt.show()
+            plt.show()
 
     return obj_star, mu_star, A_star
 
@@ -326,6 +326,10 @@ def lowerbound_fixed_w(mu, A, w, verbose=False):
 
 def my_lowerbound_fixed_w(mu, A, w, verbose=False):
     return my_lowerbound_GLR(mu, A, w, np.dot(A.T, w)), None, None
+
+
+def SDP_lowerbound_fixed_w(mu, A, w, verbose=False):
+    return SDP_lowerbound_GLR(mu, A, w, np.dot(A.T, w)), None, None
 
 
 def optimize_solved_mu(mu, A, N_A, N_Z, method=None, verbose=False):
@@ -572,53 +576,163 @@ def adverserial_descent(mu, A, iters=10, method="SLSQP", verbose=True):
 ###############################################################
 
 
-def my_lowerbound_GLR(mu, A, N_A, N_Z, EPS=1e-6):
+def SDP_lowerbound_GLR(mu, A, N_A, N_Z, EPS=1e-6):
     n, k = A.shape
     means = np.dot(A, mu)
-    i_star = np.argmax(means)    
+    i_star = np.argmax(means)
     
+    lb_star = np.inf
     for s in range(n):
         if s == i_star:
             continue
-        delta_s = means[i_star] - means[s]
-        Ai_p = cp.Variable(k)
-        As_p = cp.Variable(k)
-        mu_p = cp.Variable(k)
-        alpha = cp.Variable(k)
-        
-        d_Ai = N_A[i_star] * cp.sum(cp.rel_entr(A[i_star], Ai_p))
-        d_As = N_A[s] * cp.sum(cp.rel_entr(A[s], As_p))
-        d_mu = cp.sum(cp.multiply(N_Z, cp.square(mu - mu_p))) / 2  # assume gaussian
-        
-        constraints = [
-            cp.sum(alpha) == delta_s,
-            Ai_p >= EPS,
-            cp.sum(Ai_p) == 1,
-            As_p >= EPS,
-            cp.sum(As_p) == 1,
-            mu_p >= 0,
-            mu_p <= 1,
-        ]
-        for j in range(k):
-            # McCormick Relaxations
-            constraints.append(alpha[j] >= -mu_p[j])
-            constraints.append(alpha[j] <= mu_p[j])
-            constraints.append(alpha[j] >= As_p[j] - Ai_p[j] + mu_p[j] - 1)
-            constraints.append(alpha[j] <= As_p[j] - Ai_p[j] - mu_p[j] + 1)
-        
-        problem = cp.Problem(cp.Minimize(d_Ai + d_As + d_mu), constraints)
-        
-        try:
-            problem.solve()
-            if problem.status in [cp.OPTIMAL, cp.OPTIMAL_INACCURATE]:
-                return problem.value
-            else:
-                print("non optimal value at glr")
+        # --- 2. Define the SDP Matrix Variable and Block Slices ---
+        dim = 1 + 3 * k
+        # The main matrix variable X. Using PSD=True enforces X >> 0.
+        X = cp.Variable((dim, dim), PSD=True)
+
+        # Create convenient slices to access the blocks of X. This makes the code
+        # much more readable and mirrors the mathematical formulation.
+        # First-order terms (proxies for original variables)
+        X_0A_i = X[1 : 1+k, 0]
+        X_0A_s = X[1+k : 1+2*k, 0]
+        X_0mu  = X[1+2*k : 1+3*k, 0]
+
+        # Second-order blocks (proxies for products)
+        X_A_iA_i = X[1 : 1+k, 1 : 1+k]
+        X_A_sA_s = X[1+k : 1+2*k, 1+k : 1+2*k]
+        X_mumu   = X[1+2*k : 1+3*k, 1+2*k : 1+3*k]
+        X_A_iA_s = X[1 : 1+k, 1+k : 1+2*k]
+        X_A_imu  = X[1 : 1+k, 1+2*k : 1+3*k]
+        X_A_smu  = X[1+k : 1+2*k, 1+2*k : 1+3*k]
+
+        # --- 3. Define the Objective Function ---
+        # The objective is convex and is written using the first-order slices of X.
+        d_Ai = N_A[i_star] * cp.sum(cp.rel_entr(A[i_star], X_0A_i))
+        d_As = N_A[s] * cp.sum(cp.rel_entr(A[s], X_0A_s))
+        d_mu = 0.5 * cp.sum(cp.multiply(N_Z, cp.square(mu - X_0mu)))
+
+        objective = cp.Minimize(d_Ai + d_As + d_mu)
+
+        # --- 4. Define the Constraints ---
+        constraints = []
+
+        # a) Core SDP and Non-Negativity Constraints
+        constraints.append(X[0, 0] == 1)
+        constraints.append(X >= 0)  # Element-wise non-negativity (your excellent suggestion)
+
+        # b) Translated Constraints from Original Problem
+        # Relaxation of the non-convex constraint: mu^T(As - Ai) >= 0
+        constraints.append(cp.trace(X_A_smu) - cp.trace(X_A_imu) >= 0)
+
+        # Probability distribution constraints
+        constraints.append(cp.sum(X_0A_i) == 1)
+        constraints.append(X_0A_i >= EPS)
+        constraints.append(cp.sum(X_0A_s) == 1)
+        constraints.append(X_0A_s >= EPS)
+
+        # Bounds on mu
+        constraints.append(X_0mu >= 0)
+        constraints.append(X_0mu <= 1)
+
+        # c) Strengthening Constraints (Diagonal RLT)
+        # From X_p[j]^2 <= X_p[j] for a probability or value in [0,1]
+        constraints.append(cp.diag(X_A_iA_i) <= X_0A_i)
+        constraints.append(cp.diag(X_A_sA_s) <= X_0A_s)
+        constraints.append(cp.diag(X_mumu) <= X_0mu)
+
+        # d) Advanced Strengthening Constraints (from multiplying constraints)
+        # From mu[l] * sum(A[j]) = mu[l]
+        for l in range(k):
+            constraints.append(cp.sum(X_A_imu[:, l]) == X_0mu[l])
+            constraints.append(cp.sum(X_A_smu[:, l]) == X_0mu[l])
+
+        # From (sum A_i) * (sum A_s) = 1
+        constraints.append(cp.sum(X_A_iA_s) == 1)
+
+        # --- 5. Define and Solve the Problem ---
+        # This problem class (SDP + Exponential Cone) requires a powerful solver.
+        # MOSEK is highly recommended. SCS is an open-source alternative.
+        problem = cp.Problem(objective, constraints)
+        # The verbose=True flag lets you see the solver's progress.
+        problem.solve(solver=cp.SCS, verbose=True)
+
+        # --- 6. Display Results ---
+        if problem.status in ["optimal", "optimal_inaccurate"]:
+            lb_star = min(lb_star, problem.value)
+        else:
+            print(f"\nProblem could not be solved. Status: {problem.status}")
+    
+    return lb_star
+
+
+def my_lowerbound_GLR(mu, A, N_A, N_Z, EPS=1e-6):
+    n, k = A.shape
+    means = np.dot(A, mu)
+    i_star = np.argmax(means)
+    
+    lb = np.inf
+    for signs in itertools.product([-1, 1], repeat=k):
+        for s in range(n):
+            if s == i_star:
+                continue
+            Ai_p = cp.Variable(k)
+            As_p = cp.Variable(k)
+            mu_p = cp.Variable(k)
+            alpha = cp.Variable(k)
+            
+            d_Ai = N_A[i_star] * cp.sum(cp.rel_entr(A[i_star], Ai_p))
+            d_As = N_A[s] * cp.sum(cp.rel_entr(A[s], As_p))
+            d_mu = cp.sum(cp.multiply(N_Z, cp.square(mu - mu_p))) / 2  # assume gaussian
+            
+            constraints = [
+                cp.sum(alpha) >= 0,
+                Ai_p >= EPS,
+                cp.sum(Ai_p) == 1,
+                As_p >= EPS,
+                cp.sum(As_p) == 1,
+                mu_p >= 0,
+                mu_p <= 1,
+            ]
+            bounds = []
+            for j in range(k):
+                # sign of (As_j - A1_j)
+                if signs[j] == 1:
+                    constraints.append(As_p[j] - Ai_p[j] >= 0)
+                    # McCormick Relaxations
+                    constraints.append(alpha[j] <= mu_p[j])
+                    constraints.append(alpha[j] <= As_p[j] - Ai_p[j])
+                    constraints.append(alpha[j] >= 0)
+                    constraints.append(alpha[j] >= mu_p[j] + As_p[j] - Ai_p[j] - 1)
+                    
+                    bounds.append(min(mu[j], A[s, j] - A[i_star, j]))
+                    
+                else:
+                    constraints.append(As_p[j] - Ai_p[j] <= 0)
+                    # McCormick Relaxations
+                    constraints.append(alpha[j] >= -mu_p[j])
+                    constraints.append(alpha[j] >= As_p[j] - Ai_p[j])
+                    constraints.append(alpha[j] <= 0)
+                    constraints.append(alpha[j] <= mu_p[j] - As_p[j] + Ai_p[j] + 1)
+                    
+                    bounds.append(min(0, mu[j] - A[s, j] + A[i_star, j] + 1))
+                    
+            
+            problem = cp.Problem(cp.Minimize(d_Ai + d_As + d_mu), constraints)
+            
+            try:
+                problem.solve()
+                if problem.status in [cp.OPTIMAL, cp.OPTIMAL_INACCURATE]:
+                    if problem.value < lb:
+                        lb = problem.value
+                else:
+                    print("non optimal value at glr")
+                    continue
+            except:
+                print("failed optimization at glr")
                 return None
-        except:
-            print("failed optimization at glr")
-            return None
-        
+    
+    return lb    
+
 
 def lowerbound_GLR(mu, A, N_A, N_Z):
     c_m = 0.5  # assumed gaussian distribution
@@ -788,7 +902,8 @@ def test_method_fixed_w(n, k, name="grid", experiment_cnt=10, rep=1):
         "grid": fixed_w_grid_search,
         "contribution": contribution_optimization,
         "lowerbound": lowerbound_fixed_w,
-        "my_lowerbound": my_lowerbound_fixed_w
+        "my_lowerbound": my_lowerbound_fixed_w,
+        "SDP_lowerbound": SDP_lowerbound_fixed_w
     }
     testset_path = TESTSET_DIR + f"fixed_w_n={n}_k={k}.json"
     output_path=f"results/fixed_w_{name}.txt"
@@ -818,8 +933,6 @@ def test_method_fixed_w(n, k, name="grid", experiment_cnt=10, rep=1):
             alg_obj, alg_mu, alg_A = np.inf, None, None
             for _ in range(rep):
                 result = optimization_alg(mu, A, w, verbose=False)
-                plt.axhline(y=obj_star, color="black", linestyle='--')
-                plt.show()
                 if result[0] < alg_obj:
                     alg_obj, alg_mu, alg_A = result
 
