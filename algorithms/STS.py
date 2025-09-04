@@ -2,7 +2,7 @@ from utils import *
 from optimization import optimize, optimize_GLR, lowerbound_GLR
 
 class STS:
-    def __init__(self, n, k, confidence, mode = {'average_w': False}):
+    def __init__(self, n, k, confidence, tracking, mode = {'average_w': False}):
         self.n = n 
         self.k = k 
         self.T = 0 
@@ -15,22 +15,19 @@ class STS:
         self.optimization_failed_flag = False
         self.optimization_failed_number_of_rounds = 0
         
+        self.tracking = tracking
         self.mode = mode
         
         self.sum_ws = np.zeros(n)
 
-
     def get_mu_hat(self):
         return self.sum_of_rewards / self.N_Z
-
     
     def get_A_hat(self):
         return self.cnt_post_actions / self.N_A.reshape((self.n, 1))
     
-    
     def get_means_hat(self):
         return self.get_A_hat() @ self.get_mu_hat()
-
 
     def best_empirical_arm_calculator(self):
         mu_hat = self.get_mu_hat()
@@ -42,20 +39,17 @@ class STS:
         best_arm = np.argmax(actions_mu_hat)  
         return best_arm, actions_mu_hat, delta_hat
 
-
     def lambda_hat(self):
         mu_hat = self.get_mu_hat()
         A_hat = self.get_A_hat()
         obj_star = optimize_GLR(mu_hat, A_hat, self.N_A, self.N_Z)[0]
         return obj_star
     
-    
     def lambda_lb(self):
         mu_hat = self.get_mu_hat()
         A_hat = self.get_A_hat()
         obj_star = lowerbound_GLR(mu_hat, A_hat, self.N_A, self.N_Z)[0]
         return obj_star
-
 
     def beta_t_mu(self, delta):
         return (
@@ -75,12 +69,10 @@ class STS:
         beta_t = self.beta_t_mu(self.confidence / 2) + self.beta_t_mu(self.confidence / 2)
         return lambda_hat_t > beta_t, lambda_hat_t, beta_t
 
-
     def stopping_rule_lb(self):
         lambda_lb = self.lambda_lb()
         beta_t = self.beta_t_mu(self.confidence / 2) + self.beta_t_mu(self.confidence / 2)
         return lambda_lb > beta_t, lambda_lb, beta_t
-
 
     def optimal_w(self):
         mu_hat = self.get_mu_hat()
@@ -89,7 +81,6 @@ class STS:
         T_star, w_star = optimize(mu_hat, A_hat)
         
         return w_star
-
 
     def C_projection(self, w):
         eps = 0.5/np.sqrt(self.n**2 + self.T)
@@ -120,13 +111,7 @@ class STS:
 
         return v.value
     
-
-    def C_Tracking(self):
-        # Initialization phase
-        if np.any(self.cnt_post_actions == 0):  # explore all of A
-            unexplored_pa = np.where(self.cnt_post_actions == 0)
-            return unexplored_pa[0][0], True
-
+    def C_tracking(self):
         # C-tracking
         w = self.optimal_w()
         w_projected = self.C_projection(w)
@@ -141,13 +126,7 @@ class STS:
         result = target - self.N_A
         return np.argmax(result), False
 
-
-    def D_Tracking(self):
-        # Initialization phase
-        if np.any(self.cnt_post_actions == 0):  # explore all of A
-            unexplored_a = np.where(self.cnt_post_actions == 0)
-            return unexplored_a[0][0], True
-        
+    def D_tracking(self):
         # Forced exploration
         if np.any(self.N_A < np.sqrt(self.T) - self.n/2):
             unexplored_a = np.where(self.N_A < np.sqrt(self.T) - self.n/2)
@@ -166,7 +145,6 @@ class STS:
         result = target - self.N_A
         return np.argmax(result), False
 
-
     def G_projection(self, w, v):
         if np.array_equal(w, v):  # already too close to w
             return w
@@ -175,13 +153,7 @@ class STS:
         proj = w - dir / np.min(t)
         return proj
 
-
-    def G_Tracking(self):
-        # Initialization phase
-        if np.any(self.cnt_post_actions == 0):  # explore all of A
-            unexplored_a = np.where(self.cnt_post_actions == 0)
-            return unexplored_a[0][0], True
-        
+    def G_tracking(self):
         # Forced exploration
         if np.sqrt(self.T) % 1 == 0:
             # Selects an arm at random
@@ -201,7 +173,54 @@ class STS:
         
         result = target - self.N_A
         return np.argmax(result), False
+    
+    def E_projection(self, w, v):
+        if np.array_equal(w, v):  # already too close to w
+            return w
+        dir = w - v
+        target = w + dir * self.T
+        if np.any(target < 0):
+            return self.G_projection(w, v)
+        return target
+    
+    def E_tracking(self):
+        # Forced exploration
+        if np.sqrt(self.T) % 1 == 0:
+            # Selects an arm at random
+            arm = np.random.randint(0, self.n)
+            return arm, False
         
+        # Direct tracking
+        w = self.optimal_w()
+        w_projected = self.E_projection(w, self.N_A / sum(self.N_A))
+
+        self.sum_ws += w_projected/np.sum(w_projected)  # make sure w sums up to 1
+        
+        if self.mode["average_w"]:
+            target = (self.sum_ws)/ np.sum(self.sum_ws) * np.sum(self.N_A)  # some optimization rounds may have failed so scale up to match it
+        else:
+            target = w_projected * np.sum(self.N_A)
+        
+        result = target - self.N_A
+        return np.argmax(result), False
+    
+    def get_action(self):
+        # Initialization phase
+        if np.any(self.cnt_post_actions == 0):  # explore all of A
+            unexplored_a = np.where(self.cnt_post_actions == 0)
+            return unexplored_a[0][0], True
+        
+        if self.tracking == 'C':
+            return self.C_tracking()
+        elif self.tracking == 'G': 
+            return self.G_tracking()
+        elif self.tracking == 'D':
+            return self.D_tracking()
+        elif self.tracking == 'E':
+            return self.E_tracking()
+        else:
+            print("INVALID TRACKING")
+            return -1, False
 
     def update(self, main_action, post_action, reward):
         self.T += 1

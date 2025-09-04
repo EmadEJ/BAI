@@ -93,33 +93,21 @@ def read_all_instances_from_json(dir_path = 'instances/'):
         return [], [], [], [], [], [], []
 
 
-def add_output_to_json(instance_number, args, mu_hats, N_times_seens, w_s, T, best_arm):
+def add_output_to_json(instance_number, args, mu_hats, A_hats, N_As, N_Zs, w_s, T, best_arm):
     path = f'results/simulation/instance_{instance_number}_'
     
     path += args.Algorithm + "_" + args.tracking
-    
-    # if args.Algorithm == 'STS':
-    #     if args.use_optimized_p:
-    #         path += '_optimizedPTrue'
-    #     else:
-    #         if args.average_w:
-    #             path += '_averagedWTrue'
-    #         if args.average_points_played:
-    #             path += '_averagePointsPlayedTrue'
-    
-    # if args.Algorithm == 'STS_C_Tracking':
-    #     if args.stopping_rule == 'c_stopping_rule':
-    #         path += '_CStoppingRule'
-
-    instance = {
-        "mu_hats": mu_hats,
-        "N_times_seens": N_times_seens,
-        "w_s": w_s,
-        "T": T,
-        "best_arm": int(best_arm)
-    }
-    
     path += '.json'
+
+    instance_data = {
+        "T": T,
+        "best_arm": int(best_arm),
+        "mu_hats": mu_hats,
+        "A_hats": A_hats,
+        "N_As": N_As,
+        "N_Zs": N_Zs,
+        "w_s": w_s
+    }
     
     try:
         with open(path, 'r') as file:
@@ -128,7 +116,7 @@ def add_output_to_json(instance_number, args, mu_hats, N_times_seens, w_s, T, be
         print(err)
         data = []
     
-    data.append(instance)
+    data.append(instance_data)
     
     with open(path, 'w') as file:
         json.dump(data, file, indent=4)
@@ -141,9 +129,11 @@ def read_outputs_from_json(file_path):
             
             # Prepare lists for each parameter
             mu_hat_list = []
-            N_times_seens_list = []
-            T_list = []
+            A_hat_list = []
+            N_As = []
+            N_Zs = []
             w_s_list = []
+            T_list = []
             best_arm_list = []
            
             # Populate the lists with data from the JSON file
@@ -152,10 +142,12 @@ def read_outputs_from_json(file_path):
                 best_arm_list.append(instance["best_arm"])
                 w_s_list.append(instance["w_s"])
                 mu_hat_list.append(instance["mu_hats"])
-                N_times_seens_list.append(instance["N_times_seens"])
+                A_hat_list.append(instance["A_hats"])
+                N_As.append(instance["N_As"])
+                N_Zs.append(instance["N_Zs"])
 
-            return mu_hat_list, N_times_seens_list, T_list, w_s_list, best_arm_list
+            return mu_hat_list, A_hat_list, N_As, N_Zs, w_s_list, T_list, best_arm_list
 
     except FileNotFoundError as err:
         print(err)
-        return [], [], [], [], []
+        return [], [], [], [], [], [], []

@@ -6,7 +6,7 @@ from utils import *
 from io_utils import *
 from environment import *
 
-def simulate(verbose=True):
+def simulate(verbose=False):
     args = get_arguments()
     index = args.instance_index
     
@@ -18,8 +18,9 @@ def simulate(verbose=True):
     }
 
     st_time = time.time()
-    env = Environment(mus, A, args.Algorithm, args.tracking, n, k, confidence, mode=mode)
-    best_arm, mu_hats, N_times_seens, w_s, lambda_lbs, lambdas, betas, T = env.loop()
+    env = Environment(mus, A, n, k)
+    run_result = env.loop(confidence, args.Algorithm, args.tracking, mode)
+    best_arm, mu_hats, A_hats, N_As, N_Zs, w_s, lambda_lbs, lambdas, betas, T = run_result
     fn_time = time.time()
     
     if verbose:
@@ -31,8 +32,8 @@ def simulate(verbose=True):
         plt.show()
     
     if args.store:
-        add_output_to_json(index, args, mu_hats, N_times_seens, w_s, T, best_arm)
-    
+        add_output_to_json(index, args, mu_hats, A_hats, N_As, N_Zs, w_s, T, best_arm)
+
     print("#"*60)
     print("The number of time steps is:", T)
     print("The actual best arm is:", np.argmax(np.dot(A, mus)))
@@ -42,4 +43,4 @@ def simulate(verbose=True):
     
 
 if __name__ == "__main__":
-    simulate()
+    simulate(verbose=True)

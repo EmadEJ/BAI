@@ -5,18 +5,14 @@ from utils import *
 
 class Environment:
     
-    def __init__(self, mus, A, algorithm, tracking, n, k, confidence, mode = {'use_optimized_p': False, 'average_w': False, 'average_points_played': False}):
+    def __init__(self, mus, A, n, k):
 
-        self.algorithm = algorithm
-        self.tracking = tracking
         self.mus = mus  # mean reward of each context
         self.A = A  # context given arm probabilty matrix
         self.n = n
         self.k = k
         self.T = 0
-        self.confidence = confidence
         self.samples = np.random.normal(loc=0, scale=1, size=1000000)  # sample noise at each arm pull
-        self.mode = mode
         
         self.means = np.dot(self.A, self.mus)
         self.best_arm = np.argmax(self.means)
@@ -31,30 +27,23 @@ class Environment:
         self.T += 1
         return post_action, reward
 
-    def loop(self):
+    def loop(self, confidence, algorithm, tracking, mode = {'average_w': False}):
         mu_hats = []
         A_hats = []
         w_s = []
-        N_times_seens = []
+        N_As = []
+        N_Zs = []
         lambda_lbs = []
         lambdas = []
         betas = []
-        
-        if self.algorithm == 'STS':  # Seperator Track and Stop            
-            alg = STS(self.n, self.k, self.confidence, self.mode)  # shouldn't get A
+
+        if algorithm == 'STS':  # Seperator Track and Stop
+            alg = STS(self.n, self.k, confidence, tracking, mode)
             in_init = True
             
             while in_init or not alg.stopping_rule()[0]:
                 # Select an action using the algorithm
-                if self.tracking == 'C':
-                    action, init = alg.C_Tracking()
-                elif self.tracking == 'G':
-                    action, init = alg.G_Tracking()
-                elif self.tracking == 'D':
-                    action, init = alg.D_Tracking()
-                else:
-                    print("INVALID TRACKING")
-                    return
+                action, init = alg.get_action()
                 
                 if in_init and not init:
                     in_init = False
@@ -68,7 +57,8 @@ class Environment:
                     w_s.append(w)
                     mu_hats.append(alg.get_mu_hat().tolist())
                     A_hats.append(alg.get_A_hat().tolist())
-                    N_times_seens.append(alg.N_A.tolist())
+                    N_As.append(alg.N_A.tolist())
+                    N_Zs.append(alg.N_Z.tolist())
 
                     _, lambda_lb_t, _ = alg.stopping_rule_lb()
                     _, lambda_t, beta_t = alg.stopping_rule()
@@ -76,7 +66,7 @@ class Environment:
                     lambdas.append(lambda_t)
                     betas.append(beta_t)
                     
-                    print(f"lambda_lb_t: {lambda_lb_t}, lambda_hat_t: {lambda_t}, beta_t: {beta_t}, confidence: {self.confidence}")
+                    print(f"lambda_lb_t: {lambda_lb_t}, lambda_hat_t: {lambda_t}, beta_t: {beta_t}, confidence: {confidence}")
                     print(f"Round {self.T}, action {action}, post_action {post_action}, reward {reward}")
                     print(f"w: {w}")
                     print(f"means: {alg.get_means_hat()}")
@@ -89,5 +79,5 @@ class Environment:
             betas.append(beta_t)
             best_arm, _, _ = alg.best_empirical_arm_calculator()
             print(f"number of failed optimization rounds is {alg.optimization_failed_number_of_rounds}")
-        
-        return best_arm, mu_hats, N_times_seens, w_s, lambda_lbs, lambdas, betas, self.T
+
+        return best_arm, mu_hats, A_hats, N_As, N_Zs, w_s, lambda_lbs, lambdas, betas, self.T
