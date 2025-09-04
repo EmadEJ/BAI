@@ -66,12 +66,12 @@ class STS:
     def stopping_rule(self):
         # returns True if need to stop and are enough confident
         lambda_hat_t = self.lambda_hat() 
-        beta_t = self.beta_t_mu(self.confidence / 2) + self.beta_t_mu(self.confidence / 2)
+        beta_t = self.beta_t_A(self.confidence / 2) + self.beta_t_mu(self.confidence / 2)
         return lambda_hat_t > beta_t, lambda_hat_t, beta_t
 
     def stopping_rule_lb(self):
         lambda_lb = self.lambda_lb()
-        beta_t = self.beta_t_mu(self.confidence / 2) + self.beta_t_mu(self.confidence / 2)
+        beta_t = self.beta_t_A(self.confidence / 2) + self.beta_t_mu(self.confidence / 2)
         return lambda_lb > beta_t, lambda_lb, beta_t
 
     def optimal_w(self):
