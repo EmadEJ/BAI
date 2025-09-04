@@ -64,6 +64,7 @@ def optimal_A(mu, A, w, mu_p, s, solver=None, slack=0):
     n, k = A.shape
     i_star, _ = best_arm(mu, A)
     
+    # TODO: only 2 rows of A_p as variable
     A_p = cp.Variable((n, k))
     
     constraints = [(A_p[s] - A_p[i_star]) @ mu_p >= 0 - slack]

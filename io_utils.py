@@ -6,7 +6,7 @@ import numpy as np
 def get_arguments():
     parser = argparse.ArgumentParser(description="Parse variables simulate")
     
-    parser.add_argument("--Algorithm", type=str, required=False, default='STS')
+    parser.add_argument("--algorithm", type=str, required=False, default='STS')
     parser.add_argument("--instance_index", type=int, required=False, default=0)
     parser.add_argument("--store", type=bool, required=False, default=True)
     parser.add_argument("--tracking", type=str, required=False, default='C')
@@ -93,21 +93,11 @@ def read_all_instances_from_json(dir_path = 'instances/'):
         return [], [], [], [], [], [], []
 
 
-def add_output_to_json(instance_number, args, mu_hats, A_hats, N_As, N_Zs, w_s, T, best_arm):
+def add_output_to_json(instance_number, args, result):
     path = f'results/simulation/instance_{instance_number}_'
-    
-    path += args.Algorithm + "_" + args.tracking
-    path += '.json'
 
-    instance_data = {
-        "T": T,
-        "best_arm": int(best_arm),
-        "mu_hats": mu_hats,
-        "A_hats": A_hats,
-        "N_As": N_As,
-        "N_Zs": N_Zs,
-        "w_s": w_s
-    }
+    path += args.algorithm + "_" + args.tracking
+    path += '.json'
     
     try:
         with open(path, 'r') as file:
@@ -116,7 +106,7 @@ def add_output_to_json(instance_number, args, mu_hats, A_hats, N_As, N_Zs, w_s, 
         print(err)
         data = []
     
-    data.append(instance_data)
+    data.append(result)
     
     with open(path, 'w') as file:
         json.dump(data, file, indent=4)

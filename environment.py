@@ -1,6 +1,7 @@
 import numpy as np
 
 from algorithms.STS import *
+from algorithms.ASTS import *
 from utils import *
 
 class Environment:
@@ -27,7 +28,7 @@ class Environment:
         self.T += 1
         return post_action, reward
 
-    def loop(self, confidence, algorithm, tracking, mode = {'average_w': False}):
+    def run_STS(self, alg):
         mu_hats = []
         A_hats = []
         w_s = []
@@ -37,47 +38,118 @@ class Environment:
         lambdas = []
         betas = []
 
-        if algorithm == 'STS':  # Seperator Track and Stop
-            alg = STS(self.n, self.k, confidence, tracking, mode)
-            in_init = True
+        in_init = True
+        while in_init or not alg.stopping_rule()[0]:
+            # Select an action using the algorithm
+            action, init = alg.get_action()
             
-            while in_init or not alg.stopping_rule()[0]:
-                # Select an action using the algorithm
-                action, init = alg.get_action()
-                
-                if in_init and not init:
-                    in_init = False
-                    print(f"----- initialization finished with {self.T} rounds -----")                    
-                
-                post_action, reward = self.take_action(action)
-                alg.update(action, post_action, reward)
-                
-                if not in_init and self.T % self.log_period == 0:
-                    w = alg.optimal_w().tolist()
-                    w_s.append(w)
-                    mu_hats.append(alg.get_mu_hat().tolist())
-                    A_hats.append(alg.get_A_hat().tolist())
-                    N_As.append(alg.N_A.tolist())
-                    N_Zs.append(alg.N_Z.tolist())
+            if in_init and not init:
+                in_init = False
+                print(f"----- initialization finished with {self.T} rounds -----")                    
+            
+            post_action, reward = self.take_action(action)
+            alg.update(action, post_action, reward)
+            
+            if not in_init and self.T % self.log_period == 0:
+                w = alg.optimal_w().tolist()
+                w_s.append(w)
+                mu_hats.append(alg.get_mu_hat().tolist())
+                A_hats.append(alg.get_A_hat().tolist())
+                N_As.append(alg.N_A.tolist())
+                N_Zs.append(alg.N_Z.tolist())
 
-                    _, lambda_lb_t, _ = alg.stopping_rule_lb()
-                    _, lambda_t, beta_t = alg.stopping_rule()
-                    lambda_lbs.append(lambda_lb_t)
-                    lambdas.append(lambda_t)
-                    betas.append(beta_t)
-                    
-                    print(f"lambda_lb_t: {lambda_lb_t}, lambda_hat_t: {lambda_t}, beta_t: {beta_t}, confidence: {confidence}")
-                    print(f"Round {self.T}, action {action}, post_action {post_action}, reward {reward}")
-                    print(f"w: {w}")
-                    print(f"means: {alg.get_means_hat()}")
-                    print("#" * 50)
-                
-            _, lambda_lb_t, _ = alg.stopping_rule_lb()
-            _, lambda_t, beta_t = alg.stopping_rule()
-            lambda_lbs.append(lambda_lb_t)
-            lambdas.append(lambda_t)
-            betas.append(beta_t)
-            best_arm, _, _ = alg.best_empirical_arm_calculator()
-            print(f"number of failed optimization rounds is {alg.optimization_failed_number_of_rounds}")
+                _, lambda_lb_t, _ = alg.stopping_rule_lb()
+                _, lambda_t, beta_t = alg.stopping_rule()
+                lambda_lbs.append(lambda_lb_t)
+                lambdas.append(lambda_t)
+                betas.append(beta_t)
 
-        return best_arm, mu_hats, A_hats, N_As, N_Zs, w_s, lambda_lbs, lambdas, betas, self.T
+                print(f"Round {self.T}, action {action}, post_action {post_action}, reward {reward}")
+                print(f"lambda_lb_t: {lambda_lb_t}, lambda_hat_t: {lambda_t}, beta_t: {beta_t}, confidence: {alg.confidence}")
+                print(f"w: {w}")
+                print(f"means: {alg.get_means_hat()}")
+                print("#" * 50)
+            
+        _, lambda_lb_t, _ = alg.stopping_rule_lb()
+        _, lambda_t, beta_t = alg.stopping_rule()
+        lambda_lbs.append(lambda_lb_t)
+        lambdas.append(lambda_t)
+        betas.append(beta_t)
+        best_arm = int(alg.best_empirical_arm_calculator()[0])
+
+        result = {
+            'T': self.T,
+            'best_arm': best_arm,
+            'mu_hats': mu_hats,
+            'A_hats': A_hats,
+            'N_As': N_As,
+            'N_Zs': N_Zs,
+            'w_s': w_s,
+            'lambda_lbs': lambda_lbs,
+            'lambdas': lambdas,
+            'betas': betas
+        }
+        return result
+
+    def run_ASTS(self, alg):
+        mu_hats = []
+        w_s = []
+        N_As = []
+        N_Zs = []
+        lambdas = []
+        betas = []
+
+        in_init = True
+        while in_init or not alg.stopping_rule()[0]:
+            # Select an action using the algorithm
+            action, init = alg.get_action()
+            
+            if in_init and not init:
+                in_init = False
+                print(f"----- initialization finished with {self.T} rounds -----")                    
+            
+            post_action, reward = self.take_action(action)
+            alg.update(action, post_action, reward)
+            
+            if not in_init and self.T % self.log_period == 0:
+                w = alg.optimal_w().tolist()
+                w_s.append(w)
+                mu_hats.append(alg.get_mu_hat().tolist())
+                N_As.append(alg.N_A.tolist())
+                N_Zs.append(alg.N_Z.tolist())
+
+                _, lambda_t, beta_t = alg.stopping_rule()
+                lambdas.append(lambda_t)
+                betas.append(beta_t)
+                
+                print(f"Round {self.T}, action {action}, post_action {post_action}, reward {reward}")
+                print(f"lambda_hat_t: {lambda_t}, beta_t: {beta_t}, confidence: {alg.confidence}")
+                print(f"w: {w}")
+                print(f"means: {alg.get_means_hat()}")
+                print("#" * 50)
+            
+        _, lambda_t, beta_t = alg.stopping_rule()
+        lambdas.append(lambda_t)
+        betas.append(beta_t)
+        best_arm = int(alg.best_empirical_arm_calculator()[0])
+
+        result = {
+            'T': self.T,
+            'best_arm': best_arm,
+            'mu_hats': mu_hats,
+            'N_As': N_As,
+            'N_Zs': N_Zs,
+            'w_s': w_s,
+            'lambdas': lambdas,
+            'betas': betas
+        }
+        return result
+
+    def run(self, confidence, algorithm, tracking, mode = {'average_w': False}):
+        if algorithm == "STS":
+            alg = STS(self.n, self.k, confidence, tracking, mode)
+            return self.run_STS(alg)
+        if algorithm == "ASTS":
+            alg = ASTS(self.n, self.k, self.A, confidence, tracking, mode)
+            return self.run_ASTS(alg)
+        
