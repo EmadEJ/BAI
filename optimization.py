@@ -53,10 +53,10 @@ def optimal_mu(mu, A, w, A_p, s, slack=0):
         if problem.status in [cp.OPTIMAL, cp.OPTIMAL_INACCURATE]:
             return mu_p.value
         else:
-            print("non optimal value at mu")
+            print(f"non optimal value at mu {problem.status}")
             return mu_p.value
-    except:
-        print("failed optimization at mu")
+    except Exception as e:
+        print(f"failed optimization at mu: {e}")
         return None
     
 
@@ -64,26 +64,36 @@ def optimal_A(mu, A, w, mu_p, s, solver=None, slack=0):
     n, k = A.shape
     i_star, _ = best_arm(mu, A)
     
-    # TODO: only 2 rows of A_p as variable
-    A_p = cp.Variable((n, k))
-    
-    constraints = [(A_p[s] - A_p[i_star]) @ mu_p >= 0 - slack]
-    for i in range(n):
-        constraints += [cp.sum(A_p[i]) == 1]
-    
-    objective = cp.sum([cp.multiply(w[i], cp.sum(cp.rel_entr(A[i], A_p[i]))) for i in range(n)])
-    
+    A_pi = cp.Variable(k)
+    A_ps = cp.Variable(k)
+
+    constraints = [
+        (A_ps - A_pi) @ mu_p >= 0 - slack,
+        A_pi >= 0,
+        A_ps >= 0,
+        cp.sum(A_pi) == 1,
+        cp.sum(A_ps) == 1
+    ]
+
+    objective = (
+        w[i_star] * cp.sum(cp.rel_entr(A[i_star], A_pi)) +
+        w[s] * cp.sum(cp.rel_entr(A[s], A_ps))
+    )
+
     problem = cp.Problem(cp.Minimize(objective), constraints)
     
     try:
         problem.solve(solver=solver)
+        A_p = A.copy()
+        A_p[i_star] = A_pi.value
+        A_p[s] = A_ps.value
         if problem.status in [cp.OPTIMAL, cp.OPTIMAL_INACCURATE]:
-            return A_p.value
+            return A_p
         else:
-            print("non optimal value at A")
-            return A_p.value
-    except:
-        print("failed optimization at A")
+            print(f"non optimal value at A {problem.status}")
+            return A_p
+    except Exception as e:
+        print(f"failed optimization at A: {e}")
         return None
 
 
@@ -251,8 +261,10 @@ def optimize_scipy_GLR(mu, A, N_A, N_Z, method="SLSQP", verbose=False):
     i_star, _ = best_arm(mu, A)
 
     def solved_mu_objective(A_p_list, s):  # assumes gaussian
-        A_p = np.array(A_p_list).reshape((n, k))
-        
+        A_p = np.copy(A)
+        A_p[i_star] = A_p_list[0:k]
+        A_p[s] = A_p_list[k:2*k]
+
         result = 0
         for i in range(n):
             result += N_A[i] * categorical_kl(A[i], A_p[i])
@@ -271,26 +283,25 @@ def optimize_scipy_GLR(mu, A, N_A, N_Z, method="SLSQP", verbose=False):
         result += added_val
 
         return result
-    
-    # distribution constraints
-    mat = np.zeros((n, n * k))
-    for i in range(n):
-        for j in range(k):
-            mat[i][i*k + j] = 1
-    
-    constraints = LinearConstraint(mat, [1.0 for _ in range(n)], [1.0 for _ in range(n)])
-    bounds = Bounds([EPS for _ in range(n * k)], [1.0 for _ in range(n * k)])
-    
+
     obj_star = np.inf
     mu_star, A_star = None, None
     for s in range(n):
         if s == i_star:
             continue
+        
+        # distribution constraints
+        mat = np.zeros((2, 2 * k))
+        for j in range(k):
+            mat[0][j] = 1
+            mat[1][k + j] = 1
 
-        # TODO: have only 2 rows of the matrix as variables
+        constraints = LinearConstraint(mat, [1.0, 1.0], [1.0, 1.0])
+        bounds = Bounds([EPS for _ in range(2 * k)], [1.0 for _ in range(2 * k)])
+
         result = minimize(
             solved_mu_objective, 
-            x0=np.reshape(A, (n*k)).tolist(), 
+            x0=np.reshape(A[[i_star, s]], (2*k)).tolist(), 
             args=(s), 
             bounds=bounds, 
             constraints=constraints,
@@ -300,7 +311,7 @@ def optimize_scipy_GLR(mu, A, N_A, N_Z, method="SLSQP", verbose=False):
         A0 = optimal_A(mu, A, N_A, mu, s)
         result2 = minimize(
             solved_mu_objective, 
-            x0=np.reshape(A0, (n*k)).tolist(), 
+            x0=np.reshape(A0[[i_star, s]], (2*k)).tolist(), 
             args=(s), 
             bounds=bounds, 
             constraints=constraints,
@@ -309,7 +320,9 @@ def optimize_scipy_GLR(mu, A, N_A, N_Z, method="SLSQP", verbose=False):
         if result2.fun < result.fun:
             result = result2
         
-        A_p = np.array(result.x).reshape((n, k))
+        A_p = np.copy(A)
+        A_p[i_star] = result.x[0:k]
+        A_p[s] = result.x[k:2*k]
         mu_p = optimal_mu(mu, A, N_A, A_p, s)
         obj = objective(mu, A, mu_p, A_p, N_A, N_Z)
         
