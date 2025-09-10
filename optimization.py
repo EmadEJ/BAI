@@ -1,11 +1,11 @@
-import numpy as np
-import cvxpy as cp
+from pathlib import Path
 from tqdm import tqdm
 import itertools
+import numpy as np
+import cvxpy as cp
 from scipy.optimize import minimize, Bounds, LinearConstraint
 from scipy.special import softmax
 import plotly.express as px
-from pathlib import Path
 
 from utils import *
 from io_utils import *

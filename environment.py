@@ -2,6 +2,7 @@ import numpy as np
 
 from algorithms.STS import *
 from algorithms.ASTS import *
+from algorithms.MuSTS import *
 from utils import *
 
 class Environment:
@@ -28,7 +29,7 @@ class Environment:
         self.T += 1
         return post_action, reward
 
-    def run_STS(self, alg):
+    def run_STS(self, alg: STS):
         mu_hats = []
         A_hats = []
         w_s = []
@@ -70,12 +71,14 @@ class Environment:
                 print(f"means: {alg.get_means_hat()}")
                 print("#" * 50)
             
+        print("number of failed optimization rounds is ", alg.optimization_failed_number_of_rounds)
+        
         _, lambda_lb_t, _ = alg.stopping_rule_lb()
         _, lambda_t, beta_t = alg.stopping_rule()
         lambda_lbs.append(lambda_lb_t)
         lambdas.append(lambda_t)
         betas.append(beta_t)
-        best_arm = int(alg.best_empirical_arm_calculator()[0])
+        best_arm = int(alg.best_empirical_arm()[0])
 
         result = {
             'T': self.T,
@@ -90,8 +93,65 @@ class Environment:
             'betas': betas
         }
         return result
+    
+    def run_MuSTS(self, alg: MuSTS):
+        A_hats = []
+        w_s = []
+        N_As = []
+        N_Zs = []
+        lambdas = []
+        betas = []
 
-    def run_ASTS(self, alg):
+        in_init = True
+        while in_init or not alg.stopping_rule()[0]:
+            # Select an action using the algorithm
+            action, init = alg.get_action()
+            
+            if in_init and not init:
+                in_init = False
+                print(f"----- initialization finished with {self.T} rounds -----")                  
+            
+            post_action, reward = self.take_action(action)
+            alg.update(action, post_action, reward)
+            
+            
+            if not in_init and self.T % self.log_period == 0:
+                w = alg.optimal_w().tolist()
+                w_s.append(w)
+                A_hats.append(alg.get_A_hat().tolist())
+                N_As.append(alg.N_A.tolist())
+                N_Zs.append(alg.N_Z.tolist())
+
+                _, lambda_t, beta_t = alg.stopping_rule()
+                lambdas.append(lambda_t)
+                betas.append(beta_t)
+
+                print(f"Round {self.T}, action {action}, post_action {post_action}, reward {reward}")
+                print(f"lambda_hat_t: {lambda_t}, beta_t: {beta_t}, confidence: {alg.confidence}")
+                print(f"w: {w}")
+                print(f"means: {alg.get_means_hat()}")
+                print("#" * 50)
+            
+        print("number of failed optimization rounds is ", alg.optimization_failed_number_of_rounds)
+        
+        _, lambda_t, beta_t = alg.stopping_rule()
+        lambdas.append(lambda_t)
+        betas.append(beta_t)
+        best_arm = int(alg.best_empirical_arm()[0])
+
+        result = {
+            'T': self.T,
+            'best_arm': best_arm,
+            'A_hats': A_hats,
+            'N_As': N_As,
+            'N_Zs': N_Zs,
+            'w_s': w_s,
+            'lambdas': lambdas,
+            'betas': betas
+        }
+        return result
+
+    def run_ASTS(self, alg: ASTS):
         mu_hats = []
         w_s = []
         N_As = []
@@ -127,11 +187,13 @@ class Environment:
                 print(f"w: {w}")
                 print(f"means: {alg.get_means_hat()}")
                 print("#" * 50)
-            
+        
+        print("number of failed optimization rounds is ", alg.optimization_failed_number_of_rounds)
+        
         _, lambda_t, beta_t = alg.stopping_rule()
         lambdas.append(lambda_t)
         betas.append(beta_t)
-        best_arm = int(alg.best_empirical_arm_calculator()[0])
+        best_arm = int(alg.best_empirical_arm()[0])
 
         result = {
             'T': self.T,
@@ -152,4 +214,9 @@ class Environment:
         if algorithm == "ASTS":
             alg = ASTS(self.n, self.k, self.A, confidence, tracking, mode)
             return self.run_ASTS(alg)
+        if algorithm == "MuSTS":
+            alg = MuSTS(self.n, self.k, self.mus, confidence, tracking, mode)
+            return self.run_MuSTS(alg)
+        print("Invalid Algorithm!")
+        return None
         

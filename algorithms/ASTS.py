@@ -27,7 +27,7 @@ class ASTS:
     def get_means_hat(self):
         return self.A @ self.get_mu_hat()
 
-    def best_empirical_arm_calculator(self):
+    def best_empirical_arm(self):
         mu_hat = self.get_mu_hat()
 
         means_hat = np.dot(self.A, mu_hat)
@@ -37,7 +37,7 @@ class ASTS:
         return best_arm, means_hat, delta_hat
 
     def lambda_hat(self):
-        best_arm, _, delta_hat = self.best_empirical_arm_calculator()
+        best_arm, _, delta_hat = self.best_empirical_arm()
 
         denom = np.sum((self.A - self.A[best_arm])**2 / self.N_Z, axis=1) 
         result = (delta_hat**2) / (2 * denom)
@@ -52,15 +52,14 @@ class ASTS:
         )
 
     def stopping_rule(self):
-        # returns True if need to stop and are enough confident
+        # returns True if need to stop and are confident enough
         lambda_hat_t = self.lambda_hat() 
         beta_t = self.beta_t_mu(self.confidence)
         return lambda_hat_t > beta_t, lambda_hat_t, beta_t
 
     def optimal_w(self):
-        mu_hat = self.get_mu_hat()
         A = self.A
-        i_star, means_hat, delta_hat = self.best_empirical_arm_calculator()
+        i_star, _, delta_hat = self.best_empirical_arm()
 
         T_star, w_star = np.inf, None
         for s in range(self.n):
@@ -69,8 +68,8 @@ class ASTS:
             
             w = cp.Variable(self.n)
             
-            coef = (A[:, i_star] - A[:, s])**2
-            objective = cp.Minimize(cp.sum(cp.multiply(coef, cp.inv_pos(A @ w))))
+            coef = (A[i_star] - A[s])**2
+            objective = cp.Minimize(cp.sum(cp.multiply(coef, cp.inv_pos(w @ A))))
             
             constraints = [w >= 0, cp.sum(w) == 1]
             

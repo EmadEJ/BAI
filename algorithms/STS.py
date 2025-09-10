@@ -29,7 +29,7 @@ class STS:
     def get_means_hat(self):
         return self.get_A_hat() @ self.get_mu_hat()
 
-    def best_empirical_arm_calculator(self):
+    def best_empirical_arm(self):
         mu_hat = self.get_mu_hat()
         A_hat = self.get_A_hat()
 
@@ -64,7 +64,7 @@ class STS:
         )
 
     def stopping_rule(self):
-        # returns True if need to stop and are enough confident
+        # returns True if need to stop and are confident enough
         lambda_hat_t = self.lambda_hat() 
         beta_t = self.beta_t_A(self.confidence / 2) + self.beta_t_mu(self.confidence / 2)
         return lambda_hat_t > beta_t, lambda_hat_t, beta_t
