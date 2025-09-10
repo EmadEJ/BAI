@@ -357,6 +357,88 @@ def optimize_scipy_GLR(mu, A, N_A, N_Z, method="SLSQP", verbose=False):
 
     return obj_star, mu_star, A_star
 
+
+def optimize_scipy_softmax_GLR(mu, A, N_A, N_Z, method="Nelder-Mead", verbose=False):
+    n, k = A.shape
+    i_star, _ = best_arm(mu, A)
+
+    def solved_mu_objective(A_p_list, s):  # assumes gaussian
+        A_p = np.copy(A)
+        A_p[i_star] = softmax(A_p_list[0:k])
+        A_p[s] = softmax(A_p_list[k:2*k])
+
+        result = 0
+        for i in range(n):
+            result += N_A[i] * categorical_kl(A[i], A_p[i])
+        
+        denom = 0
+        for j in range(k):
+            denom += (A_p[i_star][j] - A_p[s][j])**2 / N_Z[j]
+        
+        delta = max(np.dot(A_p[i_star], mu) - np.dot(A_p[s], mu), 0.0)
+        if delta == 0:
+            added_val = 0
+        elif denom == 0:
+            added_val = np.inf
+        else:
+            added_val = delta**2 / (2*denom)
+        result += added_val
+
+        return result
+
+    obj_star = np.inf
+    mu_star, A_star = None, None
+    for s in range(n):
+        if s == i_star:
+            continue
+        
+        # distribution constraints
+        mat = np.zeros((2, 2 * k))
+        for j in range(k):
+            mat[0][j] = 1
+            mat[1][k + j] = 1
+
+        result = minimize(
+            solved_mu_objective, 
+            x0=np.reshape(np.log(A[[i_star, s]]), (2*k)).tolist(), 
+            args=(s), 
+            method=method
+        )
+        # doing the optimization with 2 starting points
+        A0 = optimal_A(mu, A, N_A, mu, s)
+        
+        result2 = minimize(
+            solved_mu_objective, 
+            x0=np.reshape(np.log(A0[[i_star, s]]), (2*k)).tolist(), 
+            args=(s), 
+            method=method
+        )
+        if result2.fun < result.fun:
+            result = result2
+        
+        A_p = np.copy(A)
+        A_p[i_star] = softmax(result.x[0:k])
+        A_p[s] = softmax(result.x[k:2*k])
+        mu_p = optimal_mu(mu, A, N_A, A_p, s)
+        obj = objective(mu, A, mu_p, A_p, N_A, N_Z)
+        
+        if np.abs(result.fun - obj) > 1e-6:
+            print("Non cvx glr optimization is not compatible!")
+            print(obj, result.fun)
+            print("A:", A)
+            print("mu:", mu)
+            print("N_A:", N_A)
+            print("N_Z:", N_Z)
+            print("A_p:", A_p)
+            print("mu_p:", mu_p)
+        
+        if obj < obj_star:
+            obj_star = obj
+            mu_star = mu_p
+            A_star = A_p
+
+    return obj_star, mu_star, A_star
+
 ########## lowerbounds
 
 def SDP_lowerbound_GLR(mu, A, N_A, N_Z, EPS=1e-6, verbose=False):
@@ -536,6 +618,7 @@ def lowerbound_GLR(mu, A, N_A, N_Z, verbose=False):
 ALGS_GLR = {
     "coordinate": coordinate_descent_GLR,
     "scipy": optimize_scipy_GLR,
+    "scipy_softmax": optimize_scipy_softmax_GLR,
     "grid": grid_search_GLR,
     "contribution": contribution_optimization_GLR,
     "lowerbound": lowerbound_GLR,
@@ -543,7 +626,7 @@ ALGS_GLR = {
     "SDP_lowerbound": SDP_lowerbound_GLR
 }
 
-def optimize_GLR(mu, A, N_A, N_Z, alg="scipy", verbose=False):
+def optimize_GLR(mu, A, N_A, N_Z, alg="unconstrained", verbose=False):
     if alg not in ALGS_GLR.keys():
         print("Invalid GLR alg name!")
         return None
@@ -632,8 +715,7 @@ def ternary_search(mu, A, EPS=1e-3, max_iter=20, inner_alg="scipy", verbose=True
     return obj_star, w_star
 
 
-# SLSQP doesn't work well in the second layer.
-def optimize_scipy(mu, A, method="COBYQA", inner_alg="scipy", verbose=True):
+def optimize_scipy(mu, A, method="COBYQA", inner_alg="scipy_softmax", verbose=True):
     n, k = A.shape
     
     def neg_optimize_fixed_w(w, mu, A):
@@ -660,7 +742,7 @@ def optimize_scipy(mu, A, method="COBYQA", inner_alg="scipy", verbose=True):
     return obj_star, w_star
 
 
-def optimize_scipy_softmax(mu, A, method="Nelder-Mead", inner_alg="scipy", verbose=True):
+def optimize_scipy_softmax(mu, A, method="Nelder-Mead", inner_alg="scipy_softmax", verbose=True):
     n, k = A.shape
     
     w0 = np.random.rand(n)
@@ -685,7 +767,7 @@ def optimize_scipy_softmax(mu, A, method="Nelder-Mead", inner_alg="scipy", verbo
     return obj_star, w_star
 
 
-def optimize_scipy_grad(mu, A, method="BFGS", inner_alg="scipy", verbose=True):
+def optimize_scipy_grad(mu, A, method="BFGS", inner_alg="scipy_softmax", verbose=True):
     n, k = A.shape
     
     w0 = np.random.rand(n)
@@ -814,7 +896,7 @@ ALGS = {
     "grid": grid_search
 }
 
-def optimize(mu, A, alg="scipy_grad", inner_alg="scipy", verbose=False):
+def optimize(mu, A, alg="scipy_grad", inner_alg="unconstrained", verbose=False):
     if alg not in ALGS.keys():
         print("Invalid alg name!")
         return None
