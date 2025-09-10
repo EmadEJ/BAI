@@ -8,10 +8,11 @@ def get_arguments():
     
     parser.add_argument("--algorithm", type=str, required=False, default='STS')
     parser.add_argument("--instance_index", type=int, required=False, default=0)
-    parser.add_argument("--store", type=bool, required=False, default=True)
+    parser.add_argument("--store", type=bool, required=False, default=False)
     parser.add_argument("--tracking", type=str, required=False, default='C')
     parser.add_argument("--average_w", type=bool, required=False, default=False)
     parser.add_argument("--stopping_rule", type=str, required=False, default='d')
+    parser.add_argument("--cnt", type=int, required=False, default=1)
     
     return parser.parse_args()
 
@@ -131,8 +132,8 @@ def read_outputs_from_json(file_path):
                 T_list.append(instance["T"])
                 best_arm_list.append(instance["best_arm"])
                 w_s_list.append(instance["w_s"])
-                mu_hat_list.append(instance["mu_hats"])
-                A_hat_list.append(instance["A_hats"])
+                mu_hat_list.append(instance.get("mu_hats", []))
+                A_hat_list.append(instance.get("A_hats", []))
                 N_As.append(instance["N_As"])
                 N_Zs.append(instance["N_Zs"])
 

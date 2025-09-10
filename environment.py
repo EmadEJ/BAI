@@ -29,7 +29,7 @@ class Environment:
         self.T += 1
         return post_action, reward
 
-    def run_STS(self, alg: STS):
+    def run_STS(self, alg: STS, verbose=False):
         mu_hats = []
         A_hats = []
         w_s = []
@@ -46,8 +46,9 @@ class Environment:
             
             if in_init and not init:
                 in_init = False
-                print(f"----- initialization finished with {self.T} rounds -----")                    
-            
+                if verbose:
+                    print(f"----- initialization finished with {self.T} rounds -----")
+
             post_action, reward = self.take_action(action)
             alg.update(action, post_action, reward)
             
@@ -65,13 +66,15 @@ class Environment:
                 lambdas.append(lambda_t)
                 betas.append(beta_t)
 
-                print(f"Round {self.T}, action {action}, post_action {post_action}, reward {reward}")
-                print(f"lambda_lb_t: {lambda_lb_t}, lambda_hat_t: {lambda_t}, beta_t: {beta_t}, confidence: {alg.confidence}")
-                print(f"w: {w}")
-                print(f"means: {alg.get_means_hat()}")
-                print("#" * 50)
+                if verbose:
+                    print(f"Round {self.T}, action {action}, post_action {post_action}, reward {reward}")
+                    print(f"lambda_lb_t: {lambda_lb_t}, lambda_hat_t: {lambda_t}, beta_t: {beta_t}, confidence: {alg.confidence}")
+                    print(f"w: {w}")
+                    print(f"means: {alg.get_means_hat()}")
+                    print("#" * 50)
             
-        print("number of failed optimization rounds is ", alg.optimization_failed_number_of_rounds)
+        if verbose:
+            print("number of failed optimization rounds is ", alg.optimization_failed_number_of_rounds)
         
         _, lambda_lb_t, _ = alg.stopping_rule_lb()
         _, lambda_t, beta_t = alg.stopping_rule()
@@ -94,7 +97,7 @@ class Environment:
         }
         return result
     
-    def run_MuSTS(self, alg: MuSTS):
+    def run_MuSTS(self, alg: MuSTS, verbose=False):
         A_hats = []
         w_s = []
         N_As = []
@@ -109,7 +112,8 @@ class Environment:
             
             if in_init and not init:
                 in_init = False
-                print(f"----- initialization finished with {self.T} rounds -----")                  
+                if verbose:
+                    print(f"----- initialization finished with {self.T} rounds -----")                  
             
             post_action, reward = self.take_action(action)
             alg.update(action, post_action, reward)
@@ -126,14 +130,16 @@ class Environment:
                 lambdas.append(lambda_t)
                 betas.append(beta_t)
 
-                print(f"Round {self.T}, action {action}, post_action {post_action}, reward {reward}")
-                print(f"lambda_hat_t: {lambda_t}, beta_t: {beta_t}, confidence: {alg.confidence}")
-                print(f"w: {w}")
-                print(f"means: {alg.get_means_hat()}")
-                print("#" * 50)
-            
-        print("number of failed optimization rounds is ", alg.optimization_failed_number_of_rounds)
-        
+                if verbose:
+                    print(f"Round {self.T}, action {action}, post_action {post_action}, reward {reward}")
+                    print(f"lambda_hat_t: {lambda_t}, beta_t: {beta_t}, confidence: {alg.confidence}")
+                    print(f"w: {w}")
+                    print(f"means: {alg.get_means_hat()}")
+                    print("#" * 50)
+
+        if verbose:
+            print("number of failed optimization rounds is ", alg.optimization_failed_number_of_rounds)
+
         _, lambda_t, beta_t = alg.stopping_rule()
         lambdas.append(lambda_t)
         betas.append(beta_t)
@@ -151,7 +157,7 @@ class Environment:
         }
         return result
 
-    def run_ASTS(self, alg: ASTS):
+    def run_ASTS(self, alg: ASTS, verbose=False):
         mu_hats = []
         w_s = []
         N_As = []
@@ -166,8 +172,9 @@ class Environment:
             
             if in_init and not init:
                 in_init = False
-                print(f"----- initialization finished with {self.T} rounds -----")                    
-            
+                if verbose:
+                    print(f"----- initialization finished with {self.T} rounds -----")
+
             post_action, reward = self.take_action(action)
             alg.update(action, post_action, reward)
             
@@ -182,14 +189,16 @@ class Environment:
                 lambdas.append(lambda_t)
                 betas.append(beta_t)
                 
-                print(f"Round {self.T}, action {action}, post_action {post_action}, reward {reward}")
-                print(f"lambda_hat_t: {lambda_t}, beta_t: {beta_t}, confidence: {alg.confidence}")
-                print(f"w: {w}")
-                print(f"means: {alg.get_means_hat()}")
-                print("#" * 50)
-        
-        print("number of failed optimization rounds is ", alg.optimization_failed_number_of_rounds)
-        
+                if verbose:
+                    print(f"Round {self.T}, action {action}, post_action {post_action}, reward {reward}")
+                    print(f"lambda_hat_t: {lambda_t}, beta_t: {beta_t}, confidence: {alg.confidence}")
+                    print(f"w: {w}")
+                    print(f"means: {alg.get_means_hat()}")
+                    print("#" * 50)
+
+        if verbose:
+            print("number of failed optimization rounds is ", alg.optimization_failed_number_of_rounds)
+
         _, lambda_t, beta_t = alg.stopping_rule()
         lambdas.append(lambda_t)
         betas.append(beta_t)
@@ -207,16 +216,16 @@ class Environment:
         }
         return result
 
-    def run(self, confidence, algorithm, tracking, mode = {'average_w': False}):
+    def run(self, confidence, algorithm, tracking, mode = {'average_w': False}, verbose=False):
         if algorithm == "STS":
             alg = STS(self.n, self.k, confidence, tracking, mode)
-            return self.run_STS(alg)
+            return self.run_STS(alg, verbose=verbose)
         if algorithm == "ASTS":
             alg = ASTS(self.n, self.k, self.A, confidence, tracking, mode)
-            return self.run_ASTS(alg)
+            return self.run_ASTS(alg, verbose=verbose)
         if algorithm == "MuSTS":
             alg = MuSTS(self.n, self.k, self.mus, confidence, tracking, mode)
-            return self.run_MuSTS(alg)
+            return self.run_MuSTS(alg, verbose=verbose)
         print("Invalid Algorithm!")
         return None
         
