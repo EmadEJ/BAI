@@ -1,5 +1,6 @@
 import numpy as np
 import matplotlib.pyplot as plt
+import plotly.express as px
 import time
 from tqdm import tqdm
 
@@ -62,12 +63,17 @@ def simulate(verbose=False):
                 add_output_to_json(index, args, result)
             
         fn_time = time.time()
+        
         print("#"*60)
         print("Average number of arm pulls is:", np.mean(Ts))
         print("Correctly identified ratio:", best_arms.count(best_arm) / args.cnt)
         print("The actual best arm is:", best_arm)
         print(f"Simulation process took {fn_time - st_time} seconds.")
         print("#"*60)
+        
+        fig = px.box(x=Ts, title=f"{args.algorithm} arm pulls on instance {index}")
+        fig.update_layout(xaxis_title="Arm Pulls")
+        fig.show()
     
 
 if __name__ == "__main__":
