@@ -626,7 +626,7 @@ ALGS_GLR = {
     "SDP_lowerbound": SDP_lowerbound_GLR
 }
 
-def optimize_GLR(mu, A, N_A, N_Z, alg="unconstrained", verbose=False):
+def optimize_GLR(mu, A, N_A, N_Z, alg="scipy_softmax", verbose=False):
     if alg not in ALGS_GLR.keys():
         print("Invalid GLR alg name!")
         return None
