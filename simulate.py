@@ -30,6 +30,8 @@ def simulate(verbose=False):
                 plt.plot(x, result['lambda_lbs'], label="lambda lower bounds")
             plt.plot(x, result['lambdas'], label="lambdas")
             plt.plot(x, result['betas'], label="stopping threshold")
+            plt.xlabel("Arm pulls")
+            plt.ylabel("GLR value")
             plt.legend()
             plt.show()
         

@@ -2,9 +2,10 @@ from utils import *
 import cvxpy as cp
 from algorithms.TS import TS
 
+# known A Seperator Track and Stop
 class ASTS(TS):
     def __init__(self, n, k, A, confidence, tracking, mode = {'average_w': False}):
-        super().__init__(n, k, A, confidence, tracking, mode)
+        super().__init__(n, k, confidence, tracking, mode)
         self.A = A
         
         self.N_A = np.zeros(n)
@@ -48,6 +49,7 @@ class ASTS(TS):
         return lambda_hat_t > beta_t, lambda_hat_t, beta_t
 
     def optimal_w(self):
+        # BUG: wrong optimization problem
         A = self.A
         i_star, _, delta_hat = self.best_empirical_arm()
 

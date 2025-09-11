@@ -4,6 +4,7 @@ from scipy.optimize import minimize
 from scipy.special import softmax
 from algorithms.TS import TS
 
+# known Mu Seperator Track and Stop
 class MuSTS(TS):
     def __init__(self, n, k, mu, confidence, tracking, mode = {'average_w': False}):
         super().__init__(n, k, confidence, tracking, mode)

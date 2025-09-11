@@ -2,6 +2,7 @@ from utils import *
 import cvxpy as cp
 from abc import ABC, abstractmethod
 
+# Base Track and Stop
 class TS(ABC):
     def __init__(self, n, k, confidence, tracking, mode = {'average_w': False}):
         self.n = n

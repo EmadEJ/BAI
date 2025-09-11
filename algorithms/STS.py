@@ -2,6 +2,7 @@ from utils import *
 from optimization import optimize, optimize_GLR, lowerbound_GLR
 from algorithms.TS import TS
 
+# general Seperator Track and Stop
 class STS(TS):
     def __init__(self, n, k, confidence, tracking, mode = {'average_w': False}):
         super().__init__(n, k, confidence, tracking, mode)

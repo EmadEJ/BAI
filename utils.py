@@ -2,7 +2,7 @@ import numpy as np
 import cvxpy as cp
 import matplotlib.pyplot as plt
 
-
+# Approximation of Lambert W function
 def Cg(x):
     return x + np.log(x)
 
