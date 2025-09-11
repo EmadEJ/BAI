@@ -49,32 +49,39 @@ class ASTS(TS):
         return lambda_hat_t > beta_t, lambda_hat_t, beta_t
 
     def optimal_w(self):
-        # BUG: wrong optimization problem
-        A = self.A
-        i_star, _, delta_hat = self.best_empirical_arm()
+        # Adapted directly from the old implementation of ASTS
+        i_star, _, delta = self.best_empirical_arm()
 
-        T_star, w_star = np.inf, None
-        for s in range(self.n):
-            if s == i_star:
+        w = cp.Variable(self.n)  # Weights for convex combination
+        w_p = self.A.T @ w  # w_p is a convex combination of rows of A
+        t = cp.Variable()
+
+        # Constraints
+        constraints = [cp.sum(w) == 1, w >= 0]
+        for i in range(self.n):
+            if i == i_star:
                 continue
-            
-            w = cp.Variable(self.n)
-            
-            coef = (A[i_star] - A[s])**2
-            objective = cp.Minimize(cp.sum(cp.multiply(coef, cp.inv_pos(w @ A))))
-            
-            constraints = [w >= 0, cp.sum(w) == 1]
-            
-            problem = cp.Problem(objective, constraints)
-            problem.solve()
-            
-            T_s = (delta_hat[s]**2) / (2 * problem.value)
-            if T_s < T_star:
-                T_star = T_s
-                w_star = w.value
+            denom = cp.sum([(self.A[i, j] - self.A[i_star, j])**2 * cp.inv_pos(w_p[j]) for j in range(self.k)])
+            constraints.append(
+                t >= denom / (delta[i] ** 2)
+            )
 
-        return w_star
-    
+        objective = cp.Minimize(t)
+        problem = cp.Problem(objective, constraints)
+        
+        try:
+            problem.solve()
+            if problem.status not in ["optimal", "optimal_inaccurate"]:
+                self.optimization_failed_flag = True
+            else:
+                return w.value
+        except Exception as e:
+            self.optimization_failed_flag = True
+            print("Optimization failed:", e)
+            return None
+
+        return np.ones(self.n) / self.n
+
     def get_action(self):
         # Initialization phase
         if np.any(self.N_Z == 0):  # explore all contexts at least once

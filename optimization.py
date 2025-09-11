@@ -852,6 +852,7 @@ def adverserial_descent(mu, A, iters=10, inner_alg="scipy", verbose=True):
 ########## w with lowerbound GLR
 
 def lowerbound_optimize(mu, A):
+    # TODO: This only works for n=2
     c_m = 0.5  # assumed gaussian distribution
     n, k = A.shape
     
