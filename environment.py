@@ -31,11 +31,7 @@ class Environment:
         return post_action, reward
 
     def run_STS(self, alg: STS, verbose=False):
-        mu_hats = []
-        A_hats = []
         w_s = []
-        N_As = []
-        N_Zs = []
         lambda_lbs = []
         lambdas = []
         betas = []
@@ -62,10 +58,6 @@ class Environment:
             if not in_init and self.T % self.log_period == 0:
                 w = alg.optimal_w().tolist()
                 w_s.append(w)
-                mu_hats.append(alg.get_mu_hat().tolist())
-                A_hats.append(alg.get_A_hat().tolist())
-                N_As.append(alg.N_A.tolist())
-                N_Zs.append(alg.N_Z.tolist())
 
                 lambda_lb_t = alg.lambda_lb()
                 _, _, beta_t = alg.stopping_rule()
@@ -98,12 +90,6 @@ class Environment:
         result = {
             'T': self.T,
             'best_arm': best_arm,
-            'T_star': T_star,
-            'w_star': list(w_star),
-            'mu_hats': mu_hats,
-            'A_hats': A_hats,
-            'N_As': N_As,
-            'N_Zs': N_Zs,
             'w_s': w_s,
             'lambda_lbs': lambda_lbs,
             'lambdas': lambdas,
@@ -113,10 +99,7 @@ class Environment:
         return result
     
     def run_MuSTS(self, alg: MuSTS, verbose=False):
-        A_hats = []
         w_s = []
-        N_As = []
-        N_Zs = []
         lambdas = []
         betas = []
 
@@ -137,9 +120,6 @@ class Environment:
             if not in_init and self.T % self.log_period == 0:
                 w = alg.optimal_w().tolist()
                 w_s.append(w)
-                A_hats.append(alg.get_A_hat().tolist())
-                N_As.append(alg.N_A.tolist())
-                N_Zs.append(alg.N_Z.tolist())
 
                 _, lambda_t, beta_t = alg.stopping_rule()
                 lambdas.append(lambda_t)
@@ -163,9 +143,6 @@ class Environment:
         result = {
             'T': self.T,
             'best_arm': best_arm,
-            'A_hats': A_hats,
-            'N_As': N_As,
-            'N_Zs': N_Zs,
             'w_s': w_s,
             'lambdas': lambdas,
             'betas': betas
@@ -173,10 +150,7 @@ class Environment:
         return result
 
     def run_ASTS(self, alg: ASTS, verbose=False):
-        mu_hats = []
         w_s = []
-        N_As = []
-        N_Zs = []
         lambdas = []
         betas = []
 
@@ -196,9 +170,6 @@ class Environment:
             if not in_init and self.T % self.log_period == 0:
                 w = alg.optimal_w().tolist()
                 w_s.append(w)
-                mu_hats.append(alg.get_mu_hat().tolist())
-                N_As.append(alg.N_A.tolist())
-                N_Zs.append(alg.N_Z.tolist())
 
                 _, lambda_t, beta_t = alg.stopping_rule()
                 lambdas.append(lambda_t)
@@ -222,9 +193,6 @@ class Environment:
         result = {
             'T': self.T,
             'best_arm': best_arm,
-            'mu_hats': mu_hats,
-            'N_As': N_As,
-            'N_Zs': N_Zs,
             'w_s': w_s,
             'lambdas': lambdas,
             'betas': betas
@@ -233,7 +201,6 @@ class Environment:
 
     def run_SGTS(self, alg: SGTS, verbose=False):
         w_s = []
-        N_As = []
         lambdas = []
         betas = []
 
@@ -253,7 +220,6 @@ class Environment:
             if not in_init and self.T % self.log_period == 0:
                 w = alg.optimal_w().tolist()
                 w_s.append(w)
-                N_As.append(alg.N_A.tolist())
 
                 _, lambda_t, beta_t = alg.stopping_rule()
                 lambdas.append(lambda_t)
@@ -277,7 +243,6 @@ class Environment:
         result = {
             'T': self.T,
             'best_arm': best_arm,
-            'N_As': N_As,
             'w_s': w_s,
             'lambdas': lambdas,
             'betas': betas
