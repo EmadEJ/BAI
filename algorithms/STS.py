@@ -17,7 +17,7 @@ class STS(TS):
     
     def get_A_hat(self):
         return self.cnt_post_actions / self.N_A.reshape((self.n, 1))
-    
+
     def get_means_hat(self):
         return self.get_A_hat() @ self.get_mu_hat()
 
@@ -31,6 +31,10 @@ class STS(TS):
         best_arm = np.argmax(means_hat)  
         return best_arm, means_hat, delta_hat
 
+    def get_T_star(self, mu, A):
+        T_star_inv, w_star = optimize(mu, A, alg="grid")
+        return 1/T_star_inv, w_star
+    
     def lambda_hat(self):
         mu_hat = self.get_mu_hat()
         A_hat = self.get_A_hat()

@@ -255,7 +255,6 @@ def coordinate_descent_GLR(mu, A, N_A, N_Z, iters=5, verbose=True):
 
 
 def optimize_scipy_GLR(mu, A, N_A, N_Z, method="SLSQP", verbose=False):
-    # TODO: Use unconstrained methods instead of SLSQP
     EPS = 1e-6
     n, k = A.shape
     i_star, _ = best_arm(mu, A)
@@ -637,7 +636,7 @@ def optimize_GLR(mu, A, N_A, N_Z, alg="scipy_softmax", verbose=False):
 
 ############################## w optimization
 
-def grid_search(mu, A, div=101, solver=cp.CLARABEL, verbose=True):
+def grid_search(mu, A, div=21, solver=cp.CLARABEL, verbose=True):
     n, k = A.shape
     # Used coordinate ternary search to get to the result
     obj_star = -np.inf  
@@ -648,6 +647,25 @@ def grid_search(mu, A, div=101, solver=cp.CLARABEL, verbose=True):
     grid = itertools.product(grid_range, repeat=n-1)
     # Note that w[0] is always 1 - sum of the rest.
     for w_p in grid:
+        w0 = 1 - sum(w_p)
+        if w0 < 0:
+            continue
+        
+        w_p = np.array(([w0] + list(w_p)))
+
+        obj_p, _, _ = grid_search_GLR(mu, A, w_p, np.dot(A.T, w_p), solver=solver, div=11, div2=11, verbose=False)
+        objs.append(obj_p)
+        
+        if obj_p > obj_star:
+            w_star = w_p
+            obj_star = obj_p
+            
+    w_p_base = w_star[0:-1].copy()
+    gap = 1/(div-1)
+    grid_range = np.linspace(-gap, gap, div)
+    grid = itertools.product(grid_range, repeat=k-1)
+    for noise in grid:
+        w_p = np.clip(w_p_base + noise, 0, 1)
         w0 = 1 - sum(w_p)
         if w0 < 0:
             continue

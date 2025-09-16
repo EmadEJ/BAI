@@ -41,6 +41,11 @@ class Environment:
         betas = []
         beta2s = []
 
+        print("Finding real optimal w and T_star ...")
+        T_star, w_star = alg.get_T_star(self.mus, self.A)
+        print(f"Found! Asymptotically expecting {dB(alg.confidence) * T_star} arm pulls!")
+        print(T_star, w_star)
+
         in_init = True
         while in_init or not alg.stopping_rule()[0]:
             # Select an action using the algorithm
@@ -93,6 +98,8 @@ class Environment:
         result = {
             'T': self.T,
             'best_arm': best_arm,
+            'T_star': T_star,
+            'w_star': list(w_star),
             'mu_hats': mu_hats,
             'A_hats': A_hats,
             'N_As': N_As,

@@ -32,6 +32,7 @@ def simulate(verbose=False):
                 plt.plot(x, result['beta2s'], label="union bound stopping threshold")
             plt.plot(x, result['lambdas'], label="lambdas")
             plt.plot(x, result['betas'], label="stopping threshold")
+            plt.axvline(dB(confidence) * result['T_star'], label="T_star")
             plt.xlabel("Arm pulls")
             plt.ylabel("GLR value")
             plt.legend()

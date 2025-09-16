@@ -27,6 +27,11 @@ class ASTS(TS):
         best_arm = np.argmax(means_hat)  
         return best_arm, means_hat, delta_hat
 
+    def get_T_star(self, mu, A):
+        # TODO: implement
+        T_star_inv, w_star = None, None
+        return 1/T_star_inv, w_star
+
     def lambda_hat(self):
         best_arm, _, delta_hat = self.best_empirical_arm()
 

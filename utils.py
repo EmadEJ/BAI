@@ -6,6 +6,9 @@ import matplotlib.pyplot as plt
 def Cg(x):
     return x + np.log(x)
 
+# divergence of bernouli d(delta, 1-delta)
+def dB(x):
+    return x * np.log(x / (1-x)) + (1-x) * np.log((1-x) / x)
 
 def hidden_action_sampler(distribution, n_samples = None):
     if n_samples:
