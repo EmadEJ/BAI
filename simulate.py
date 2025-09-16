@@ -29,6 +29,7 @@ def simulate(verbose=False):
             x = range(0, len(result['lambdas']) * env.log_period, env.log_period)
             if args.algorithm == "STS":
                 plt.plot(x, result['lambda_lbs'], label="lambda lower bounds")
+                plt.plot(x, result['beta2s'], label="union bound stopping threshold")
             plt.plot(x, result['lambdas'], label="lambdas")
             plt.plot(x, result['betas'], label="stopping threshold")
             plt.xlabel("Arm pulls")

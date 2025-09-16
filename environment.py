@@ -39,6 +39,7 @@ class Environment:
         lambda_lbs = []
         lambdas = []
         betas = []
+        beta2s = []
 
         in_init = True
         while in_init or not alg.stopping_rule()[0]:
@@ -61,15 +62,17 @@ class Environment:
                 N_As.append(alg.N_A.tolist())
                 N_Zs.append(alg.N_Z.tolist())
 
-                _, lambda_lb_t, _ = alg.stopping_rule_lb()
-                _, lambda_t, beta_t = alg.stopping_rule()
+                lambda_lb_t = alg.lambda_lb()
+                _, _, beta_t = alg.stopping_rule()
+                _, lambda_t, beta_t2 = alg.stopping_rule2()
                 lambda_lbs.append(lambda_lb_t)
                 lambdas.append(lambda_t)
                 betas.append(beta_t)
+                beta2s.append(beta_t2)
 
                 if verbose:
                     print(f"Round {self.T}, action {action}, post_action {post_action}, reward {reward}")
-                    print(f"lambda_lb_t: {lambda_lb_t}, lambda_hat_t: {lambda_t}, beta_t: {beta_t}, confidence: {alg.confidence}")
+                    print(f"lambda_lb_t: {lambda_lb_t}, lambda_hat_t: {lambda_t}, beta_t: {beta_t}, beta_t2: {beta_t2}, confidence: {alg.confidence}")
                     print(f"w: {w}")
                     print(f"means: {alg.get_means_hat()}")
                     print("#" * 50)
@@ -77,11 +80,14 @@ class Environment:
         if verbose:
             print("number of failed optimization rounds is ", alg.optimization_failed_number_of_rounds)
         
-        _, lambda_lb_t, _ = alg.stopping_rule_lb()
-        _, lambda_t, beta_t = alg.stopping_rule()
+        lambda_lb_t = alg.lambda_lb()
+        _, _, beta_t = alg.stopping_rule()
+        _, lambda_t, beta_t2 = alg.stopping_rule2()
         lambda_lbs.append(lambda_lb_t)
         lambdas.append(lambda_t)
         betas.append(beta_t)
+        beta2s.append(beta_t2)
+        
         best_arm = int(alg.best_empirical_arm()[0])
 
         result = {
@@ -94,7 +100,8 @@ class Environment:
             'w_s': w_s,
             'lambda_lbs': lambda_lbs,
             'lambdas': lambdas,
-            'betas': betas
+            'betas': betas,
+            'beta2s': beta2s
         }
         return result
     

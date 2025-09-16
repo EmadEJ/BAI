@@ -55,7 +55,21 @@ class STS(TS):
             (self.k-1) * sum([np.log(np.e * (1 + self.N_A[i] / (self.k-1))) for i in range(self.n)])
         )
 
+    def beta_t(self, delta):
+        # This threshold is derived from the combined martingale of categorical and exponential
+        return (
+            self.k * Cg(np.log(1/delta) / self.k) +
+            3 * sum([np.log(1 + np.log(self.N_Z[j])) for j in range(self.k)]) +
+            (self.k-1) * sum([np.log(np.e * (1 + self.N_A[i] / (self.k-1))) for i in range(self.n)])
+        )
+
     def stopping_rule(self):
+        # returns True if need to stop and are confident enough
+        lambda_hat_t = self.lambda_hat() 
+        beta_t = self.beta_t(self.confidence)
+        return lambda_hat_t > beta_t, lambda_hat_t, beta_t
+
+    def stopping_rule2(self):
         # returns True if need to stop and are confident enough
         lambda_hat_t = self.lambda_hat() 
         beta_t = self.beta_t_A(self.confidence / 2) + self.beta_t_mu(self.confidence / 2)
@@ -63,7 +77,7 @@ class STS(TS):
 
     def stopping_rule_lb(self):
         lambda_lb = self.lambda_lb()
-        beta_t = self.beta_t_A(self.confidence / 2) + self.beta_t_mu(self.confidence / 2)
+        beta_t = self.beta_t(self.confidence)
         return lambda_lb > beta_t, lambda_lb, beta_t
 
     def optimal_w(self):
