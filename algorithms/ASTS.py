@@ -2,7 +2,7 @@ from utils import *
 import cvxpy as cp
 from algorithms.TS import TS
 
-# known A Seperator Track and Stop
+# known A Separator Track and Stop
 class ASTS(TS):
     def __init__(self, n, k, A, confidence, tracking, mode = {'average_w': False}):
         super().__init__(n, k, confidence, tracking, mode)
