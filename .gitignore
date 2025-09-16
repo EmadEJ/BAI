@@ -13,3 +13,4 @@ __pycache__/
 
 # Any virtual environment folder
 .venv/
+venv/
