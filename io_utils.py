@@ -119,10 +119,6 @@ def read_outputs_from_json(file_path):
             data = json.load(file)
             
             # Prepare lists for each parameter
-            mu_hat_list = []
-            A_hat_list = []
-            N_As = []
-            N_Zs = []
             w_s_list = []
             T_list = []
             best_arm_list = []
@@ -132,12 +128,8 @@ def read_outputs_from_json(file_path):
                 T_list.append(instance["T"])
                 best_arm_list.append(instance["best_arm"])
                 w_s_list.append(instance["w_s"])
-                mu_hat_list.append(instance.get("mu_hats", []))
-                A_hat_list.append(instance.get("A_hats", []))
-                N_As.append(instance["N_As"])
-                N_Zs.append(instance["N_Zs"])
 
-            return mu_hat_list, A_hat_list, N_As, N_Zs, w_s_list, T_list, best_arm_list
+            return w_s_list, T_list, best_arm_list
 
     except FileNotFoundError as err:
         print(err)
