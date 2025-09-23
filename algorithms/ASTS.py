@@ -77,6 +77,7 @@ class ASTS(TS):
         try:
             problem.solve()
             if problem.status not in ["optimal", "optimal_inaccurate"]:
+                print("Optimization status failed:", problem.status)
                 self.optimization_failed_flag = True
             else:
                 return w.value
