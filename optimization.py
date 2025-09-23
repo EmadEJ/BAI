@@ -785,11 +785,12 @@ def optimize_scipy_softmax(mu, A, method="Nelder-Mead", inner_alg="scipy_softmax
     return obj_star, w_star
 
 
-def optimize_scipy_grad(mu, A, method="BFGS", inner_alg="scipy_softmax", verbose=True):
+def optimize_scipy_grad(mu, A, method="BFGS", inner_alg="scipy_softmax", w0=None, verbose=True):
     n, k = A.shape
     
-    w0 = np.random.rand(n)
-    w0 = w0 / np.sum(w0)
+    if w0 is None:    
+        w0 = np.random.rand(n)
+        w0 = w0 / np.sum(w0)
     
     def fun(w):
         w_soft = softmax(w)
@@ -915,13 +916,15 @@ ALGS = {
     "grid": grid_search
 }
 
-def optimize(mu, A, alg="scipy_grad", inner_alg="unconstrained", verbose=False):
+def optimize(mu, A, alg="scipy_grad", inner_alg="unconstrained", w0=None, verbose=False):
     if alg not in ALGS.keys():
         print("Invalid alg name!")
         return None
     optimization_alg: function = ALGS[alg]
     
-    return optimization_alg(mu, A, verbose=verbose)
+    if w0 is None:
+        return optimization_alg(mu, A, verbose=verbose)
+    return optimization_alg(mu, A, w0=w0, verbose=verbose)
 
 
 ############################## optimization testing

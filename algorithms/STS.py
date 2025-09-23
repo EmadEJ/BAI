@@ -11,6 +11,9 @@ class STS(TS):
         self.N_Z = np.zeros(k)
         self.cnt_post_actions = np.zeros((n, k))
         self.sum_of_rewards = np.zeros(k)
+        
+        # This is used for faster convergence
+        self.last_w = None
 
     def get_mu_hat(self):
         return self.sum_of_rewards / self.N_Z
@@ -88,7 +91,8 @@ class STS(TS):
         mu_hat = self.get_mu_hat()
         A_hat = self.get_A_hat()
         
-        T_star, w_star = optimize(mu_hat, A_hat)
+        T_star, w_star = optimize(mu_hat, A_hat, w0=self.last_w)
+        self.last_w = w_star
         
         return w_star
 

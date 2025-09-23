@@ -41,10 +41,10 @@ class Environment:
         betas = []
         beta2s = []
 
-        print("Finding real optimal w and T_star ...")
-        T_star, w_star = alg.get_T_star(self.mus, self.A)
-        print(f"Found! Asymptotically expecting {dB(alg.confidence) * T_star} arm pulls!")
-        print(T_star, w_star)
+        # print("Finding real optimal w and T_star ...")
+        # T_star, w_star = alg.get_T_star(self.mus, self.A)
+        # print(f"Found! Asymptotically expecting {dB(alg.confidence) * T_star} arm pulls!")
+        # print(T_star, w_star)
 
         in_init = True
         while in_init or not alg.stopping_rule()[0]:
