@@ -1,6 +1,7 @@
 from utils import *
 import cvxpy as cp
 from algorithms.TS import TS
+import itertools
 
 # Sub-Gaussian Seperator Track and Stop
 class SGTS(TS):
@@ -28,14 +29,20 @@ class SGTS(TS):
         T_star_inv, w_star = None, None
         return 1/T_star_inv, w_star
 
-    def lambda_hat(self):
-        i_star, _, delta_hat = self.best_empirical_arm()
+    def lambda_hat(self, w=None, means=None):
+        if w is None:
+            i_star, _, delta_hat = self.best_empirical_arm()
+            N_A = self.N_A
+        else:
+            i_star = np.argmax(means)
+            delta_hat = means - means[i_star]
+            N_A = w
         
         lambda_star = np.inf
         for s in range(self.n):
             if s == i_star:
                 continue
-            glr = delta_hat[s]**2 / (2 * self.var * (1/self.N_A[i_star] + 1/self.N_A[s]))
+            glr = delta_hat[s]**2 / (2 * self.var * (1/N_A[i_star] + 1/N_A[s]))
             lambda_star = min(lambda_star, glr)
         
         return lambda_star
@@ -83,6 +90,26 @@ class SGTS(TS):
             print("Optimization failed:", e)
 
         return np.ones(self.n) / self.n
+
+    def plot_w(self, mu, A, div=101):
+        if self.n != 3:
+            print("plotting only available for n=3")
+            return
+        grid_range = np.linspace(0, 1, div)
+        grid = itertools.product(grid_range, repeat=self.n-1)
+        Ts = {}
+        for w in grid:
+            w0 = 1 - sum(w)
+            if w0 < 0:
+                continue
+            w = np.array(([w0] + list(w)))
+            
+            obj = self.lambda_hat(w, means=np.dot(A, mu))
+            
+            Ts[tuple(w)] = obj
+        
+        print(max(Ts, key=Ts.get))
+        draw_simplex_heatmap(Ts)
 
     def get_action(self):
         # Initialization phase

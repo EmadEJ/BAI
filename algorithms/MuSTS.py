@@ -3,6 +3,8 @@ import cvxpy as cp
 from scipy.optimize import minimize
 from scipy.special import softmax
 from algorithms.TS import TS
+import itertools
+from tqdm import tqdm
 
 # known Mu Separator Track and Stop
 class MuSTS(TS):
@@ -26,7 +28,7 @@ class MuSTS(TS):
         means_hat = np.dot(A_hat, self.mu)
         delta_hat = np.max(means_hat) - means_hat
 
-        best_arm = np.argmax(means_hat)  
+        best_arm = np.argmax(means_hat)
         return best_arm, means_hat, delta_hat
 
     def get_T_star(self, mu, A):
@@ -34,13 +36,11 @@ class MuSTS(TS):
         T_star_inv, w_star = None, None
         return 1/T_star_inv, w_star
 
-    def lambda_hat(self, w = None):
-        if w is None:
-            N_A = self.N_A
-        else:
-            N_A = w
-        A_hat = self.get_A_hat()
-        i_star, _, _ = self.best_empirical_arm()
+    def lambda_hat(self, w = None, A = None):
+        N_A = self.N_A if w is None else w
+        A_hat = self.get_A_hat() if A is None else A
+
+        i_star = np.argmax(np.dot(A_hat, self.mu))
         
         obj_star = np.inf
         for s in range(self.n):
@@ -65,7 +65,11 @@ class MuSTS(TS):
             problem.solve()
             
             if problem.status == "optimal":
-                obj_star = min(obj_star, problem.value)
+                if problem.value <= obj_star:
+                    obj_star = problem.value
+                    A_p = A_hat.copy()
+                    A_p[i_star] = Ai.value
+                    A_p[s] = As.value
             else:
                 self.optimization_failed_flag = True
                 self.optimization_failed_number_of_rounds += 1
@@ -73,10 +77,6 @@ class MuSTS(TS):
         if w is None:
             return obj_star
         
-        # in case we are doing coordinate descent
-        A_p = A_hat.copy()
-        A_p[i_star] = Ai.value
-        A_p[s] = As.value
         return obj_star, A_p
 
     def beta_t_A(self, delta):
@@ -122,33 +122,6 @@ class MuSTS(TS):
             problem = cp.Problem(objective, constraints)
             problem.solve()
             opts.append(problem.value)
-
-            # grid = np.linspace(0, 1, 21)
-            # opts = []
-            # for w0 in grid:
-            #     w = np.array([w0, 1-w0])
-            #     Ai = cp.Variable(self.k)
-            #     As = cp.Variable(self.k)
-
-            #     objective = cp.Minimize(
-            #         w[0] * cp.sum(cp.rel_entr(A_hat[i_star], Ai)) + 
-            #         w[1] * cp.sum(cp.rel_entr(A_hat[s], As))
-            #     )
-            #     constraints = [
-            #         Ai >= 0,
-            #         cp.sum(Ai) == 1,
-            #         As >= 0,
-            #         cp.sum(As) == 1,
-            #         (As - Ai) @ self.mu >= 0
-            #     ]
-            #     problem = cp.Problem(objective, constraints)
-            #     problem.solve()
-            #     opts.append(problem.value)
-            # plt.plot(grid, opts)
-            # plt.show()
-            # w = np.zeros(self.n)
-            # w[i_star] = 1
-            # w[s] = 1
             
         # Second smallest
         target_obj = np.sort(opts)[1]
@@ -189,55 +162,27 @@ class MuSTS(TS):
 
         w_star = w_star / np.sum(w_star)
         
-        # # Iterative differentation
-        # def fun(w):
-        #     w_soft = softmax(w)
-        #     return -self.lambda_hat(w_soft)[0]
-
-        # def jac(w):
-        #     w_soft = softmax(w)
-
-        #     _, A_star = self.lambda_hat(w_soft)
-        #     s = np.argmax(np.dot(A_star, self.mu))
-        #     if i_star == s:
-        #         # This happens when mean of s and i_star equal exactly
-        #         # Replace s with the second biggest value
-        #         sorted_arms = np.argsort(np.dot(A_star, self.mu))
-        #         if sorted_arms[-1] == i_star:
-        #             s = sorted_arms[-2]
-        #         else:
-        #             s = sorted_arms[-1]
-
-        #     grad = np.zeros(self.n)
-        #     for i in range(self.n):
-        #         grad[i] = categorical_kl(A_hat[i], A_star[i])
-            
-        #     grad = np.multiply(w_soft, (grad - np.dot(w_soft, grad)))  # accounting for softmax
-                    
-        #     return -grad
-        
-        # w0 = np.random.rand(self.n)
-        # w0 = w0 / np.sum(w0)
-        # result = minimize(
-        #         fun=fun, 
-        #         jac=jac,
-        #         x0=w0, 
-        #         method="BFGS",
-        #         options={"xrtol": 1e-4}
-        #     )
-        # scipy_w_star = softmax(result.x)
-        
-        # if np.allclose(w_star, scipy_w_star):
-        #     print("Good News!")
-        # else:
-        #     obj_star = self.lambda_hat(w_star)[0]
-        #     scipy_obj_star = self.lambda_hat(scipy_w_star)[0]
-        #     if obj_star > scipy_obj_star:
-        #         print(f"I'm Better! {obj_star - scipy_obj_star}")
-        #     else:
-        #         print(f"Scipy Better! {obj_star - scipy_obj_star}")
-        
         return w_star
+    
+    def plot_w(self, mu, A, div=101):
+        if self.n != 3:
+            print("plotting only available for n=3")
+            return
+        grid_range = np.linspace(0, 1, div)
+        grid = itertools.product(grid_range, repeat=self.n-1)
+        Ts = {}
+        for w in grid:
+            w0 = 1 - sum(w)
+            if w0 < 0:
+                continue
+            w = np.array(([w0] + list(w)))
+            
+            obj = self.lambda_hat(w, A)[0]
+            
+            Ts[tuple(w)] = obj
+            
+        print(max(Ts, key=Ts.get))
+        draw_simplex_heatmap(Ts)
     
     def get_action(self):
         # Initialization phase

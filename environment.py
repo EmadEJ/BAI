@@ -38,6 +38,9 @@ class Environment:
         betas = []
         beta2s = []
 
+        if verbose:
+            alg.plot_w(self.mus, self.A)
+
         T_star, w_star = alg.get_T_star(self.mus, self.A)
         if verbose:
             print(f"Asymptotically expecting {dB(alg.confidence) * T_star} arm pulls!")
@@ -109,6 +112,9 @@ class Environment:
         lambdas = []
         betas = []
 
+        if verbose:
+            alg.plot_w(self.mus, self.A)
+
         in_init = True
         while in_init or not alg.stopping_rule()[0]:
             # Select an action using the algorithm
@@ -160,6 +166,9 @@ class Environment:
         lambdas = []
         betas = []
 
+        if verbose:
+            alg.plot_w(self.mus, self.A)
+
         in_init = True
         while in_init or not alg.stopping_rule()[0]:
             # Select an action using the algorithm
@@ -209,6 +218,9 @@ class Environment:
         w_s = []
         lambdas = []
         betas = []
+
+        if verbose:
+            alg.plot_w(self.mus, self.A)
 
         in_init = True
         while in_init or not alg.stopping_rule()[0]:

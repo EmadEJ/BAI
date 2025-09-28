@@ -1,6 +1,7 @@
 from utils import *
 from optimization import optimize, optimize_GLR, lowerbound_GLR
 from algorithms.TS import TS
+import itertools
 
 # general Separator Track and Stop
 class STS(TS):
@@ -37,7 +38,26 @@ class STS(TS):
     def get_T_star(self, mu, A):
         T_star_inv, w_star = optimize(mu, A)
         return 1/T_star_inv, w_star
-    
+
+    def plot_w(self, mu, A, div=21):
+        if self.n != 3:
+            print("plotting only available for n=3")
+            return
+        grid_range = np.linspace(0, 1, div)
+        grid = itertools.product(grid_range, repeat=self.n-1)
+        Ts = {}
+        for w in grid:
+            w0 = 1 - sum(w)
+            if w0 < 0:
+                continue
+            w = np.array(([w0] + list(w)))
+            
+            obj = optimize_GLR(mu, A, w, np.dot(A.T, w), verbose=False)[0]
+            
+            Ts[tuple(w)] = obj
+            
+        draw_simplex_heatmap(Ts)
+
     def lambda_true(self):
         mu_hat = self.get_mu_hat()
         A_hat = self.get_A_hat()

@@ -1,6 +1,7 @@
 from utils import *
 import cvxpy as cp
 from algorithms.TS import TS
+import itertools
 
 # known A Separator Track and Stop
 class ASTS(TS):
@@ -84,9 +85,39 @@ class ASTS(TS):
         except Exception as e:
             self.optimization_failed_flag = True
             print("Optimization failed:", e)
-            return None
 
         return np.ones(self.n) / self.n
+
+    def plot_w(self, mu, A, div=101):
+        if self.n != 3:
+            print("plotting only available for n=3")
+            return
+        
+        means = np.dot(A, mu)
+        i_star = np.argmax(means)
+        deltas = means - means[i_star]
+        
+        grid_range = np.linspace(0, 1, div)
+        grid = itertools.product(grid_range, repeat=self.n-1)
+        Ts = {}
+        for w in grid:
+            w0 = 1 - sum(w)
+            if w0 < 0:
+                continue
+            w = np.array(([w0] + list(w)))
+            N_Z = np.dot(A.T, w)
+            
+            obj = np.inf
+            for i in range(self.n):
+                if i == i_star:
+                    continue
+                denom = sum([(A[i, j] - A[i_star, j])**2 * (1 / N_Z[j]) for j in range(self.k)])
+                obj = min(obj, (deltas[i] ** 2) / denom)
+            
+            Ts[tuple(w)] = obj
+            
+        print(max(Ts, key=Ts.get))
+        draw_simplex_heatmap(Ts)
 
     def get_action(self):
         # Initialization phase
