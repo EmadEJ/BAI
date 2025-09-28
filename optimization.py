@@ -1,5 +1,6 @@
 from pathlib import Path
 from tqdm import tqdm
+import time
 import itertools
 import numpy as np
 import cvxpy as cp
@@ -122,7 +123,7 @@ def optimal_w(mu, A, mu_p, A_p, solver=None):
 
 ############################## GLR Optimization
 
-def grid_search_GLR(mu, A, N_A, N_Z, div=21, div2=11, solver=cp.CLARABEL, verbose=True):
+def grid_search_GLR(mu, A, N_A, N_Z, div=21, div2=21, solver=cp.CLARABEL, verbose=True):
     n, k = A.shape
     
     i_star, _ = best_arm(mu, A)
@@ -362,20 +363,16 @@ def optimize_scipy_softmax_GLR(mu, A, N_A, N_Z, method="Nelder-Mead", verbose=Fa
     i_star, _ = best_arm(mu, A)
 
     def solved_mu_objective(A_p_list, s):  # assumes gaussian
-        A_p = np.copy(A)
-        A_p[i_star] = softmax(A_p_list[0:k])
-        A_p[s] = softmax(A_p_list[k:2*k])
+        A_i_star = softmax(A_p_list[0:k])
+        A_s = softmax(A_p_list[k:2*k])
 
-        result = 0
-        for i in range(n):
-            result += N_A[i] * categorical_kl(A[i], A_p[i])
+        result = N_A[i_star] * categorical_kl(A[i_star], A_i_star) 
+        result += N_A[s] * categorical_kl(A[s], A_s)
         
-        denom = 0
-        for j in range(k):
-            denom += (A_p[i_star][j] - A_p[s][j])**2 / N_Z[j]
+        denom = sum([(A_i_star[j] - A_s[j])**2 / N_Z[j] for j in range(k)])
         
-        delta = max(np.dot(A_p[i_star], mu) - np.dot(A_p[s], mu), 0.0)
-        if delta == 0:
+        delta = max(np.dot(A_i_star, mu) - np.dot(A_s, mu), 0.0)
+        if delta <= 0:
             added_val = 0
         elif denom == 0:
             added_val = np.inf
@@ -437,6 +434,115 @@ def optimize_scipy_softmax_GLR(mu, A, N_A, N_Z, method="Nelder-Mead", verbose=Fa
             A_star = A_p
 
     return obj_star, mu_star, A_star
+
+
+def optimize_scipy_grad_GLR(mu, A, N_A, N_Z, method="BFGS", verbose=False):
+    n, k = A.shape
+    i_star, _ = best_arm(mu, A)
+
+    def solved_mu_objective(A_p_list, s):  # assumes gaussian
+        A_p = np.copy(A)
+        A_p[i_star] = softmax(A_p_list[0:k])
+        A_p[s] = softmax(A_p_list[k:2*k])
+
+        result = 0
+        for i in range(n):
+            result += N_A[i] * categorical_kl(A[i], A_p[i])
+        
+        denom = 0
+        for j in range(k):
+            denom += (A_p[i_star][j] - A_p[s][j])**2 / N_Z[j]
+        
+        delta = max(np.dot(A_p[i_star], mu) - np.dot(A_p[s], mu), 0.0)
+        if delta == 0:
+            added_val = 0
+        elif denom == 0:
+            added_val = np.inf
+        else:
+            added_val = delta**2 / (2*denom)
+        result += added_val
+
+        return result
+
+    def jac(A_p_list, s):  # assumes gaussian
+        A_p = np.copy(A)
+        A_p[i_star] = softmax(A_p_list[0:k])
+        A_p[s] = softmax(A_p_list[k:2*k])
+        means = np.dot(A_p, mu)
+        delta_s = means[i_star] - means[s]
+        denom = sum([(A_p[i_star, j] - A_p[s, j]) ** 2 / N_Z[j] for j in range(k)])
+        
+        s_grad, i_star_grad = np.zeros(k), np.zeros(k)
+        for j in range(k):
+            i_star_grad[j] += - N_A[i_star] * (A[i_star, j] / A_p[i_star, j])
+            if delta_s > 0:
+                i_star_grad[j] += -2 * delta_s**2 * (A_p[i_star, j] - A_p[s, j]) / (N_Z[j] * denom)
+
+            s_grad[j] += - N_A[s] * (A[s, j] / A_p[s, j])
+            if delta_s > 0:
+                s_grad[j] += -2 * delta_s**2 * (A_p[s, j] - A_p[i_star, j]) / (N_Z[j] * denom)
+
+        i_star_grad = np.multiply(A_p[i_star], (i_star_grad - np.dot(A_p[i_star], i_star_grad)))  # accounting for softmax
+        s_grad = np.multiply(A_p[s], (s_grad - np.dot(A_p[s], s_grad)))  # accounting for softmax
+        grad = np.concatenate((i_star_grad, s_grad))
+        
+        return grad
+
+    obj_star = np.inf
+    mu_star, A_star = None, None
+    for s in range(n):
+        if s == i_star:
+            continue
+        
+        # distribution constraints
+        mat = np.zeros((2, 2 * k))
+        for j in range(k):
+            mat[0][j] = 1
+            mat[1][k + j] = 1
+
+        result = minimize(
+            fun=solved_mu_objective,
+            jac=jac,
+            x0=np.reshape(np.log(A[[i_star, s]]), (2*k)).tolist(), 
+            args=(s), 
+            method=method
+        )
+        # doing the optimization with 2 starting points
+        A0 = optimal_A(mu, A, N_A, mu, s)
+        
+        result2 = minimize(
+            fun=solved_mu_objective, 
+            jac=jac,
+            x0=np.reshape(np.log(A0[[i_star, s]]), (2*k)).tolist(), 
+            args=(s), 
+            method=method
+        )
+        if result2.fun < result.fun:
+            result = result2
+        
+        A_p = np.copy(A)
+        A_p[i_star] = softmax(result.x[0:k])
+        A_p[s] = softmax(result.x[k:2*k])
+        mu_p = optimal_mu(mu, A, N_A, A_p, s)
+        obj = objective(mu, A, mu_p, A_p, N_A, N_Z)
+        
+        if np.abs(result.fun - obj) > 1e-6:
+            print("Non cvx glr optimization is not compatible!")
+            print(obj, result.fun)
+            print("A:", A)
+            print("mu:", mu)
+            print("N_A:", N_A)
+            print("N_Z:", N_Z)
+            print("A_p:", A_p)
+            print("mu_p:", mu_p)
+        
+        if obj < obj_star:
+            obj_star = obj
+            mu_star = mu_p
+            A_star = A_p
+
+    return obj_star, mu_star, A_star
+
 
 ########## lowerbounds
 
@@ -618,6 +724,7 @@ ALGS_GLR = {
     "coordinate": coordinate_descent_GLR,
     "scipy": optimize_scipy_GLR,
     "scipy_softmax": optimize_scipy_softmax_GLR,
+    "scipy_grad": optimize_scipy_grad_GLR,
     "grid": grid_search_GLR,
     "contribution": contribution_optimization_GLR,
     "lowerbound": lowerbound_GLR,
@@ -791,15 +898,30 @@ def optimize_scipy_grad(mu, A, method="BFGS", inner_alg="scipy_softmax", w0=None
     if w0 is None:    
         w0 = np.random.rand(n)
         w0 = w0 / np.sum(w0)
+    else:
+        # Need to convert w0 to pre-image of softmax
+        EPS = 1e-10
+        w0 = np.log(w0 + EPS)
     
+    # caching the optimization to be used both by fun and jac
+    last_w, last_result = None, None
     def fun(w):
+        nonlocal last_w, last_result
         w_soft = softmax(w)
-        return -optimize_GLR(mu, A, w_soft, np.dot(A.T, w_soft), alg=inner_alg)[0]
+        if not np.array_equal(w_soft, last_w):
+            last_result = optimize_GLR(mu, A, w_soft, np.dot(A.T, w_soft), alg=inner_alg)
+        last_w = w_soft
+        return -last_result[0]
 
     def jac(w):
+        nonlocal last_w, last_result
         w_soft = softmax(w)
 
-        obj_star, mu_star, A_star = optimize_GLR(mu, A, w_soft, np.dot(A.T, w_soft), alg=inner_alg)
+        if not np.array_equal(w_soft, last_w):
+            last_result = optimize_GLR(mu, A, w_soft, np.dot(A.T, w_soft), alg=inner_alg)
+        last_w = w_soft
+        
+        obj_star, mu_star, A_star = last_result
         i_star, _ = best_arm(mu, A)
         s, _ = best_arm(mu_star, A_star)
         if i_star == s:
@@ -820,14 +942,12 @@ def optimize_scipy_grad(mu, A, method="BFGS", inner_alg="scipy_softmax", w0=None
                 
         return -grad
     
-    w0 = np.random.rand(n)
-    w0 = w0 / np.sum(w0)
     result = minimize(
             fun=fun, 
             jac=jac,
             x0=w0, 
             method=method,
-            options={"disp": verbose, "xrtol": TOL}
+            options={"disp": verbose}
         )
     
     if verbose and n == 2:
@@ -1139,7 +1259,7 @@ def test_method(n, k, name="", experiment_cnt=None, rep=1):
     fig.show()
 
 
-def optimize_instance(index, alg):
+def optimize_instance(index, alg, experiment_cnt=1):
     instance_path = f"instances/instance{index}.json"
     _, _, _, mu, A = read_instance_from_json(instance_path)
 
@@ -1147,8 +1267,11 @@ def optimize_instance(index, alg):
         print("Invalid alg name!")
         return
     
-    obj_star, w_star = optimize(mu, A, alg, True)
+    st_time = time.time()
+    obj_star, w_star = optimize(mu, A, alg, w0=np.array([0.45, 0.45, 0.1]), verbose=True)
+    fn_time = time.time()
     
+    print(f"It took {fn_time - st_time} seconds to find:")
     print(obj_star, w_star)
 
 
@@ -1162,4 +1285,4 @@ if __name__ == "__main__":
         else:
             test_method(args.n, args.k, experiment_cnt=args.experiment_cnt, name=args.name)
     else:
-        optimize_instance(index=args.instance_index, name=args.name)
+        optimize_instance(index=args.instance_index, alg=args.name)

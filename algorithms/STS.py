@@ -35,8 +35,14 @@ class STS(TS):
         return best_arm, means_hat, delta_hat
 
     def get_T_star(self, mu, A):
-        T_star_inv, w_star = optimize(mu, A, alg="grid")
+        T_star_inv, w_star = optimize(mu, A)
         return 1/T_star_inv, w_star
+    
+    def lambda_true(self):
+        mu_hat = self.get_mu_hat()
+        A_hat = self.get_A_hat()
+        obj_star = optimize_GLR(mu_hat, A_hat, self.N_A, self.N_Z, alg="grid")[0]
+        return obj_star
     
     def lambda_hat(self):
         mu_hat = self.get_mu_hat()

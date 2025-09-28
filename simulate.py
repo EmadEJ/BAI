@@ -25,19 +25,6 @@ def simulate(verbose=False):
         result = env.run(confidence, args.algorithm, args.tracking, mode, verbose=True)
         fn_time = time.time()
         
-        if verbose:
-            x = range(0, len(result['lambdas']) * env.log_period, env.log_period)
-            if args.algorithm == "STS":
-                plt.plot(x, result['lambda_lbs'], label="lambda lower bounds")
-                plt.plot(x, result['beta2s'], label="union bound stopping threshold")
-            plt.plot(x, result['lambdas'], label="lambdas")
-            plt.plot(x, result['betas'], label="stopping threshold")
-            plt.axvline(dB(confidence) * result['T_star'], label="T_star")
-            plt.xlabel("Arm pulls")
-            plt.ylabel("GLR value")
-            plt.legend()
-            plt.show()
-        
         if args.store:
             add_output_to_json(index, args, result)
         
@@ -46,7 +33,21 @@ def simulate(verbose=False):
         print("The actual best arm is:", best_arm)
         print("The best arm identified is:", result['best_arm'])
         print(f"Simulation process took {fn_time - st_time} seconds.")
+        print(f"Average arm pull time: {(fn_time - st_time) / result['T']} seconds")
         print("#"*60)
+        
+        if verbose:
+            x = range(0, len(result['lambdas']) * env.log_period, env.log_period)
+            plt.plot(x, result['lambdas'], label="GLR upper bound", linewidth=3)
+            plt.plot(x, result['betas'], label="stopping threshold", linewidth=3)
+            if args.algorithm == "STS":
+                plt.plot(x, result['lambda_lbs'], label="GLR lower bound", linewidth=3)
+                plt.plot(x, result['true_lambdas'], ":", label="True GLR", color="k", linewidth=3)
+                plt.plot(x, result['beta2s'], label="union bound stopping threshold", linewidth=3)
+            plt.xlabel("Arm pulls")
+            plt.ylabel("GLR value")
+            plt.legend()
+            plt.show()
         
     else:
         st_time = time.time()
@@ -73,9 +74,10 @@ def simulate(verbose=False):
         print(f"Simulation process took {fn_time - st_time} seconds.")
         print("#"*60)
         
-        fig = px.box(x=Ts, title=f"{args.algorithm} arm pulls on instance {index}")
-        fig.update_layout(xaxis_title="Arm Pulls")
-        fig.show()
+        if verbose:
+            fig = px.box(x=Ts, title=f"{args.algorithm} arm pulls on instance {index}")
+            fig.update_layout(xaxis_title="Arm Pulls")
+            fig.show()
     
 
 if __name__ == "__main__":
