@@ -20,23 +20,6 @@ def create_boxplots():
     all_data = []
     print("Starting data processing...")
 
-    # This section checks for the data directory and creates dummy data if it's missing.
-    if not os.path.exists(DATA_DIRECTORY):
-        os.makedirs(DATA_DIRECTORY)
-        for instance in INSTANCES:
-            for algorithm in ALGORITHMS:
-                filename = f"{instance}_{algorithm}.json"
-                filepath = os.path.join(DATA_DIRECTORY, filename)
-                # Generating some sample data for demonstration purposes
-                if algorithm == 'ASTS_G':
-                    dummy_data = [{'T': 100 + i*2 + (i%5 - 2)*5} for i in range(RUN_COUNT)]
-                elif algorithm == 'MuSTS_G':
-                    dummy_data = [{'T': 200 + i*5 + (i%7 - 3)*10} for i in range(RUN_COUNT)]
-                else: # SGTS_G
-                    dummy_data = [{'T': 300 + i*10 + (i%10 - 5)*15} for i in range(RUN_COUNT)]
-                with open(filepath, 'w') as f:
-                    json.dump(dummy_data, f)
-
     # Loop through each instance and algorithm to read the data
     for instance in INSTANCES:
         for algorithm in ALGORITHMS:
@@ -106,5 +89,37 @@ def create_boxplots():
     plt.savefig(output_filename, bbox_inches='tight')
     print(f"\n✅ Successfully generated boxplots with subtle mean values and saved as '{output_filename}'")
 
+def create_convergeplots(instance, algorithm, log_period=10):
+    filename = f"{instance}_{algorithm}.json"
+    filepath = os.path.join(DATA_DIRECTORY, filename)
+
+    try:
+        with open(filepath, "r") as f:
+            data = json.load(f)[-1]
+        print(f"Successfully loaded from {filename}")
+    except FileNotFoundError:
+        print(f"⚠️ Warning: File not found at '{filepath}'. Skipping.")
+    except (json.JSONDecodeError, KeyError) as e:
+        print(f"❌ Error reading {filepath}: {e}. Skipping.")
+    
+    LINE_WIDTH = 4
+    FONT_SIZE = 18
+    plt.figure(figsize=(10, 6))
+    x = range(0, len(data['lambdas']) * log_period, log_period)
+    plt.plot(x, data['lambdas'], label="GLR-heuristic", linewidth=LINE_WIDTH)
+    plt.plot(x, data['lambda_lbs'], label="GLR-relaxation", linewidth=LINE_WIDTH)
+    
+    plt.plot(x, data['true_lambdas'], ":", label="GLR-ground trouth", color="k", linewidth=LINE_WIDTH)
+    
+    plt.plot(x, data['betas'], label=r"Our $\beta$", linewidth=LINE_WIDTH)
+    plt.plot(x, data['beta2s'], label=r"Naive $\beta$", linewidth=LINE_WIDTH)
+    
+    plt.rcParams.update({'font.size': FONT_SIZE})
+    plt.tick_params(axis='both', which='major', labelsize=FONT_SIZE)
+    plt.xlabel("Arm pulls", fontsize=FONT_SIZE)
+    plt.legend()
+    plt.show()
+
 if __name__ == "__main__":
-    create_boxplots()
+    # create_boxplots()
+    create_convergeplots("instance_7", "STS_G")
