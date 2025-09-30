@@ -95,7 +95,7 @@ def optimal_A(mu, A, w, mu_p, s, solver=None, slack=0):
             return A_p
     except Exception as e:
         print(f"failed optimization at A: {e}")
-        return None
+        return A
 
 
 def optimal_w(mu, A, mu_p, A_p, solver=None):
@@ -326,7 +326,7 @@ def optimize_scipy_GLR(mu, A, N_A, N_Z, method="SLSQP", verbose=False):
         mu_p = optimal_mu(mu, A, N_A, A_p, s)
         obj = objective(mu, A, mu_p, A_p, N_A, N_Z)
         
-        if np.abs(result.fun - obj) > 1e-6:
+        if not np.isclose(result.fun, obj):
             print("Non cvx glr optimization is not compatible!")
             print(obj, result.fun)
             print("A:", A)
@@ -418,7 +418,7 @@ def optimize_scipy_softmax_GLR(mu, A, N_A, N_Z, method="Nelder-Mead", verbose=Fa
         mu_p = optimal_mu(mu, A, N_A, A_p, s)
         obj = objective(mu, A, mu_p, A_p, N_A, N_Z)
         
-        if np.abs(result.fun - obj) > 1e-6:
+        if not np.isclose(result.fun, obj):
             print("Non cvx glr optimization is not compatible!")
             print(obj, result.fun)
             print("A:", A)
@@ -526,7 +526,7 @@ def optimize_scipy_grad_GLR(mu, A, N_A, N_Z, method="BFGS", verbose=False):
         mu_p = optimal_mu(mu, A, N_A, A_p, s)
         obj = objective(mu, A, mu_p, A_p, N_A, N_Z)
         
-        if np.abs(result.fun - obj) > 1e-6:
+        if not np.isclose(result.fun, obj):
             print("Non cvx glr optimization is not compatible!")
             print(obj, result.fun)
             print("A:", A)

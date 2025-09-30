@@ -62,7 +62,6 @@ def simulate(verbose=False):
             best_arms.append(result['best_arm'])
             
             if args.store:
-                print(args.store)
                 add_output_to_json(index, args, result)
             
         fn_time = time.time()

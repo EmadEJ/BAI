@@ -34,7 +34,7 @@ class Environment:
         w_s = []
         lambda_lbs = []
         lambdas = []
-        true_lambdas = []
+        # true_lambdas = []
         betas = []
         beta2s = []
 
@@ -47,7 +47,7 @@ class Environment:
             print(T_star, w_star)
 
         in_init = True
-        while in_init or not alg.stopping_rule_lb()[0]:
+        while in_init or not alg.stopping_rule()[0]:
             # Select an action using the algorithm
             action, init = alg.get_action()
             
@@ -64,19 +64,21 @@ class Environment:
                 w_s.append(w)
 
                 lambda_lb_t = alg.lambda_lb()
-                lambda_true = alg.lambda_true()
+                # lambda_true = alg.lambda_true()
                 _, _, beta_t = alg.stopping_rule()
                 _, lambda_t, beta_t2 = alg.stopping_rule2()
                 lambda_lbs.append(lambda_lb_t)
-                true_lambdas.append(lambda_true)
+                # true_lambdas.append(lambda_true)
                 lambdas.append(lambda_t)
                 betas.append(beta_t)
                 beta2s.append(beta_t2)
 
                 if verbose:
                     print(f"Round {self.T}, action {action}, post_action {post_action}, reward {reward}")
-                    print(f"lambda_lb_t: {lambda_lb_t}, lambda_true: {lambda_true}, lambda_hat_t: {lambda_t},\nbeta_t: {beta_t}, beta_t2: {beta_t2}, confidence: {alg.confidence}")
+                    print(f"lambda_lb_t: {lambda_lb_t}, lambda_hat_t: {lambda_t},\nbeta_t: {beta_t}, beta_t2: {beta_t2}, confidence: {alg.confidence}")
                     print(f"w: {w}")
+                    print(f"A: {alg.get_A_hat()}")
+                    print(f"mu: {alg.get_mu_hat()}")
                     print(f"means: {alg.get_means_hat()}")
                     print("#" * 50)
             
@@ -84,11 +86,11 @@ class Environment:
             print("number of failed optimization rounds is ", alg.optimization_failed_number_of_rounds)
         
         lambda_lb_t = alg.lambda_lb()
-        lambda_true = alg.lambda_true()
+        # lambda_true = alg.lambda_true()
         _, _, beta_t = alg.stopping_rule()
         _, lambda_t, beta_t2 = alg.stopping_rule2()
         lambda_lbs.append(lambda_lb_t)
-        true_lambdas.append(lambda_true)
+        # true_lambdas.append(lambda_true)
         lambdas.append(lambda_t)
         betas.append(beta_t)
         beta2s.append(beta_t2)
@@ -100,7 +102,7 @@ class Environment:
             'best_arm': best_arm,
             'w_s': w_s,
             'lambda_lbs': lambda_lbs,
-            'true_lambdas': true_lambdas, 
+            # 'true_lambdas': true_lambdas, 
             'lambdas': lambdas,
             'betas': betas,
             'beta2s': beta2s

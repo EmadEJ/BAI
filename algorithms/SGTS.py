@@ -48,7 +48,7 @@ class SGTS(TS):
         return lambda_star
 
     def beta_t(self, delta):
-        return 0.5 * self.n * Cg(
+        return self.n * Cg(
             (2/self.n) * np.log(1/delta) +
             4 * np.log(np.log(np.e * self.T / self.n)) +
             2 * np.log(np.e * np.pi**2 / 6)

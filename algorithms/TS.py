@@ -94,6 +94,8 @@ class TS(ABC):
             return w
         dir = w - v
         t = np.divide(dir, w, out=np.zeros_like(w), where=dir!=0)
+        if np.min(t) == 0:
+            return w
         proj = w - dir / np.min(t)
         return proj
 

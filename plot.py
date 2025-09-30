@@ -7,10 +7,10 @@ import seaborn as sns
 # --- Configuration ---
 # This path points to the directory with your JSON files.
 DATA_DIRECTORY = "results/simulation/"
-INSTANCES = ["instance_11", "instance_12"]
-ALGORITHMS = ["ASTS_G", "MuSTS_G", "SGTS_G"]
+INSTANCES = ["instance_31", "instance_32"]
+ALGORITHMS = ["ASTS_G", "MuSTS_G", "STS_G", "SGTS_G"]
 # Number of runs to read from each JSON file
-RUN_COUNT = 100
+RUN_COUNT = 50
 # --- End of Configuration ---
 
 def create_boxplots():
