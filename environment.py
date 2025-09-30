@@ -77,8 +77,8 @@ class Environment:
                     print(f"Round {self.T}, action {action}, post_action {post_action}, reward {reward}")
                     print(f"lambda_lb_t: {lambda_lb_t}, lambda_hat_t: {lambda_t},\nbeta_t: {beta_t}, beta_t2: {beta_t2}, confidence: {alg.confidence}")
                     print(f"w: {w}")
-                    print(f"A: {alg.get_A_hat()}")
-                    print(f"mu: {alg.get_mu_hat()}")
+                    print(f"A_hat: {alg.get_A_hat()}")
+                    print(f"mu_hat: {alg.get_mu_hat()}")
                     print(f"means: {alg.get_means_hat()}")
                     print("#" * 50)
             

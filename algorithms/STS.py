@@ -5,7 +5,7 @@ import itertools
 
 # general Separator Track and Stop
 class STS(TS):
-    def __init__(self, n, k, confidence, tracking, mode = {'average_w': False}):
+    def __init__(self, n, k, confidence, tracking, mode = {'average_w': False, 'fast': False}):
         super().__init__(n, k, confidence, tracking, mode)
         
         self.N_A = np.zeros(n)
@@ -114,6 +114,16 @@ class STS(TS):
         return lambda_lb > beta_t, lambda_lb, beta_t
 
     def optimal_w(self):
+        if self.mode['fast']:
+            if self.T > 1000 and self.T % 10 != 0:
+                return self.last_w
+            if self.T > 10000 and self.T % 100 != 0:
+                return self.last_w
+            if self.T > 100000 and self.T % 1000 != 0:
+                return self.last_w
+            if self.T > 1000000 and self.T % 10000 != 0:
+                return self.last_w
+        
         mu_hat = self.get_mu_hat()
         A_hat = self.get_A_hat()
         

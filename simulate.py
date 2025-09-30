@@ -16,6 +16,7 @@ def simulate(verbose=False):
     n, k, confidence, mus, A = read_instance_from_json(instance_path)
     mode = {
         'average_w': args.average_w,
+        'fast': args.fast
     }
     best_arm = np.argmax(np.dot(A, mus))
 
