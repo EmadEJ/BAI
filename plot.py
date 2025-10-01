@@ -155,5 +155,5 @@ def create_simplex_heatmaps(instance, div=101):
 
 if __name__ == "__main__":
     # create_boxplots()
-    # create_convergeplots("instance_7", "STS_G")
-    create_simplex_heatmaps("instance10")
+    create_convergeplots("instance_5", "STS_G")
+    # create_simplex_heatmaps("instance10")

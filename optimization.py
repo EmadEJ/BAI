@@ -215,7 +215,7 @@ def contribution_optimization_GLR(mu, A, N_A, N_Z, verbose=True):
     return obj_star, mu_star, A_star
 
 
-def coordinate_descent_GLR(mu, A, N_A, N_Z, iters=5, verbose=True):
+def coordinate_descent_GLR(mu, A, N_A, N_Z, iters=10, verbose=True):
     n, k = A.shape
     
     i_star, _ = best_arm(mu, A)

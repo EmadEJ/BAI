@@ -1,7 +1,6 @@
 from utils import *
 import cvxpy as cp
-from scipy.optimize import minimize
-from scipy.special import softmax
+from scipy.optimize import minimize_scalar
 from algorithms.TS import TS
 import itertools
 from tqdm import tqdm
@@ -92,19 +91,12 @@ class MuSTS(TS):
         return lambda_hat_t > beta_t, lambda_hat_t, beta_t
 
     def optimal_w(self):
-        # Uses coordinate descent currently
         A_hat = self.get_A_hat()
         i_star, _, _ = self.best_empirical_arm()
         
-        # Emad's Method
-        opts = []
-        for s in range(self.n):
-            if s == i_star:
-                opts.append(0)
-                continue
-            
-            w = np.array([1, 1])
-
+        # Our Method
+        EPS = 0.01  # Tolerence in w error
+        def inner_func(w, s):
             Ai = cp.Variable(self.k)
             As = cp.Variable(self.k)
 
@@ -121,50 +113,45 @@ class MuSTS(TS):
             ]
             problem = cp.Problem(objective, constraints)
             problem.solve()
-            opts.append(problem.value)
             
-        # Second smallest
-        target_obj = np.sort(opts)[1]
-        w_star = np.zeros(self.n)
-        for s in range(self.n):
-            if s == i_star:
-                w_star[i_star] = 1
-                continue
+            return problem.value
+        
+        def fixed_w_istar(w_istar, give_w=False):
+            w = np.zeros(self.n)
+            w[i_star] = w_istar
             
-            l, r = 0, 1
-            while r - l > 1e-4:
-                mid = (l + r) / 2
-                w = np.array([1, mid])
-
-                Ai = cp.Variable(self.k)
-                As = cp.Variable(self.k)
-
-                objective = cp.Minimize(
-                    w[0] * cp.sum(cp.rel_entr(A_hat[i_star], Ai)) + 
-                    w[1] * cp.sum(cp.rel_entr(A_hat[s], As))
-                )
-                constraints = [
-                    Ai >= 0,
-                    cp.sum(Ai) == 1,
-                    As >= 0,
-                    cp.sum(As) == 1,
-                    (As - Ai) @ self.mu >= 0
-                ]
-                problem = cp.Problem(objective, constraints)
-                problem.solve()
+            funcs = [inner_func([w_istar, w[i]], i) for i in range(self.n)]
                 
-                if problem.value < target_obj:
-                    l = mid
-                else:
-                    r = mid
-
-            w_star[s] = (l + r) / 2
-
+            while sum(w) < 1:
+                s_star = None
+                for s in range(self.n):
+                    if s == i_star:
+                        continue
+                    if s_star is None or funcs[s] < funcs[s_star]:
+                        s_star = s
+            
+                w[s_star] += EPS
+            
+                funcs[s_star] = inner_func([w_istar, w[s_star]], s_star)
+           
+            if give_w:
+                return w
+            
+            return -np.sort(funcs)[1]
+        
+        res = minimize_scalar(
+            fixed_w_istar,
+            bounds=(0, 1),
+            method="bounded",
+            options={"xatol": EPS}
+        )
+        
+        w_star = fixed_w_istar(res.x, give_w=True)
         w_star = w_star / np.sum(w_star)
         
         return w_star
     
-    def plot_w(self, mu, A, div=101, ax=None):
+    def plot_w(self, mu, A, div=11, ax=None):
         if self.n != 3:
             print("plotting only available for n=3")
             return

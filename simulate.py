@@ -43,7 +43,7 @@ def simulate(verbose=False):
             plt.plot(x, result['betas'], label="stopping threshold", linewidth=3)
             if args.algorithm == "STS":
                 plt.plot(x, result['lambda_lbs'], label="GLR lower bound", linewidth=3)
-                plt.plot(x, result['true_lambdas'], ":", label="True GLR", color="k", linewidth=3)
+                # plt.plot(x, result['true_lambdas'], ":", label="True GLR", color="k", linewidth=3)
                 plt.plot(x, result['beta2s'], label="union bound stopping threshold", linewidth=3)
             plt.xlabel("Arm pulls")
             plt.ylabel("GLR value")
