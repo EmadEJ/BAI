@@ -11,22 +11,24 @@ from environment import *
 # --- Configuration ---
 # This path points to the directory with your JSON files.
 DATA_DIRECTORY = "results/simulation/"
-INSTANCES = ["instance_31", "instance_32"]
+INSTANCES = ["instance_11", "instance_12"]
 ALGORITHMS = ["ASTS_G", "MuSTS_G", "STS_G", "SGTS_G"]
+ALG_NAMES = [r"GTS-$A$", r"GTS-$\mu$", "GTS-Unkown", "GTS-SG"]
+INS_NAMES = [r"Hard $A$", r"Hard $\mu$"]
 # Number of runs to read from each JSON file
-RUN_COUNT = 50
+RUN_COUNT = 100
 # --- End of Configuration ---
 
 def create_boxplots():
     """
     Reads simulation data from JSON files and generates faceted boxplots with mean markers.
     """
-    all_data = []
-    print("Starting data processing...")
+    FONT_SIZE = 16
+    all_data = []    
 
     # Loop through each instance and algorithm to read the data
-    for instance in INSTANCES:
-        for algorithm in ALGORITHMS:
+    for ins_idx, instance in enumerate(INSTANCES):
+        for alg_idx, algorithm in enumerate(ALGORITHMS):
             filename = f"{instance}_{algorithm}.json"
             filepath = os.path.join(DATA_DIRECTORY, filename)
 
@@ -36,8 +38,8 @@ def create_boxplots():
                 ts = [run['T'] for run in data[:RUN_COUNT]]
                 for t_value in ts:
                     all_data.append({
-                        "Instance": instance.replace("_", " ").title(),
-                        "Algorithm": algorithm.replace("_G", ""),
+                        "Instance": INS_NAMES[ins_idx],
+                        "Algorithm": ALG_NAMES[alg_idx],
                         "T": t_value
                     })
                 print(f"Successfully loaded {len(ts)} runs from {filename}")
@@ -59,40 +61,45 @@ def create_boxplots():
         y="T",
         col="Instance",
         kind="box",
-        palette="viridis",
+        palette="deep",
         height=6,
         aspect=0.8,
         showmeans=True,
-        meanprops={"marker":"*", "markerfacecolor":"white", "markeredgecolor":"black", "markersize":"10"}
+        meanprops={"marker":"*", "markerfacecolor":"white", "markeredgecolor":"black", "markersize":FONT_SIZE}
     )
 
+    # Set axis labels font sizes
+    g.set_xlabels(size=FONT_SIZE-1)
+    g.set_ylabels(size=FONT_SIZE-1)
+
+    # Optional: Set tick label sizes too
+    g.set_xticklabels(size=FONT_SIZE-2)  # Slightly smaller than titles
+    g.set_yticklabels(size=FONT_SIZE-2)
+
     # --- Add Mean Annotations ---
-    means = df.groupby(['Instance', 'Algorithm'])['T'].mean().reset_index()
+    # means = df.groupby(['Instance', 'Algorithm'])['T'].mean().reset_index()
 
-    for i, ax in enumerate(g.axes.flat):
-        instance_name = df['Instance'].unique()[i]
-        instance_means = means[means['Instance'] == instance_name]
-        mean_map = instance_means.set_index('Algorithm')['T'].to_dict()
-        xtick_labels = [label.get_text() for label in ax.get_xticklabels()]
+    # for i, ax in enumerate(g.axes.flat):
+    #     instance_name = df['Instance'].unique()[i]
+    #     instance_means = means[means['Instance'] == instance_name]
+    #     mean_map = instance_means.set_index('Algorithm')['T'].to_dict()
+    #     xtick_labels = [label.get_text() for label in ax.get_xticklabels()]
 
-        for j, algorithm_name in enumerate(xtick_labels):
-            if algorithm_name in mean_map:
-                mean_val = mean_map[algorithm_name]
-                # --- MODIFIED THIS LINE ---
-                ax.text(j, mean_val, f'        {mean_val:.2f}',
-                        ha='left', va='center', fontsize=8, color='black', fontweight='normal')
+    #     for j, algorithm_name in enumerate(xtick_labels):
+    #         if algorithm_name in mean_map:
+    #             mean_val = mean_map[algorithm_name]
+    #             # --- MODIFIED THIS LINE ---
+    #             ax.text(j, mean_val, f'        {mean_val:.2f}',
+    #                     ha='left', va='center', fontsize=8, color='black', fontweight='normal')
 
     # Set titles and labels
-    g.fig.suptitle('Algorithm Performance Comparison', y=1.03, fontsize=16)
-    g.set_axis_labels("Algorithm", "Sample complexity")
+    g.fig.suptitle('Algorithm Performance Comparison', y=1.03, fontsize=FONT_SIZE)
+    g.set_axis_labels("Algorithm", "Sample complexity", fontsize=FONT_SIZE)
     g.set_titles("{col_name}")
     g.set(yscale="log")
 
-    # Save the plot
-    output_filename = "simulation_boxplots_subtle_mean.png"
-    plt.savefig(output_filename, bbox_inches='tight')
-    print(f"\n✅ Successfully generated boxplots with subtle mean values and saved as '{output_filename}'")
-
+    plt.show()
+    
 def create_convergeplots(instance, algorithm, log_period=10):
     filename = f"{instance}_{algorithm}.json"
     filepath = os.path.join(DATA_DIRECTORY, filename)
@@ -154,6 +161,6 @@ def create_simplex_heatmaps(instance, div=101):
     plt.show()
 
 if __name__ == "__main__":
-    # create_boxplots()
-    create_convergeplots("instance_5", "STS_G")
+    create_boxplots()
+    # create_convergeplots("instance_5", "STS_G")
     # create_simplex_heatmaps("instance10")
