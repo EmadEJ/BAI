@@ -39,7 +39,7 @@ class STS(TS):
         T_star_inv, w_star = optimize(mu, A)
         return 1/T_star_inv, w_star
 
-    def plot_w(self, mu, A, div=21):
+    def plot_w(self, mu, A, div=21, ax=None):
         if self.n != 3:
             print("plotting only available for n=3")
             return
@@ -56,7 +56,7 @@ class STS(TS):
             
             Ts[tuple(w)] = obj
             
-        draw_simplex_heatmap(Ts)
+        return draw_simplex_heatmap(Ts, ax)
 
     def lambda_true(self):
         mu_hat = self.get_mu_hat()

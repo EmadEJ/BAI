@@ -164,7 +164,7 @@ class MuSTS(TS):
         
         return w_star
     
-    def plot_w(self, mu, A, div=101):
+    def plot_w(self, mu, A, div=101, ax=None):
         if self.n != 3:
             print("plotting only available for n=3")
             return
@@ -181,8 +181,7 @@ class MuSTS(TS):
             
             Ts[tuple(w)] = obj
             
-        print(max(Ts, key=Ts.get))
-        draw_simplex_heatmap(Ts)
+        return draw_simplex_heatmap(Ts, ax)
     
     def get_action(self):
         # Initialization phase

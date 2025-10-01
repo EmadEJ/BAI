@@ -4,6 +4,10 @@ import pandas as pd
 import matplotlib.pyplot as plt
 import seaborn as sns
 
+from utils import *
+from io_utils import *
+from environment import *
+
 # --- Configuration ---
 # This path points to the directory with your JSON files.
 DATA_DIRECTORY = "results/simulation/"
@@ -120,6 +124,36 @@ def create_convergeplots(instance, algorithm, log_period=10):
     plt.legend()
     plt.show()
 
+def create_simplex_heatmaps(instance, div=101):
+    instance_path = f"instances/{instance}.json"
+    n, k, confidence, mus, A = read_instance_from_json(instance_path)
+    
+    fig, axis = plt.subplots(1, 4, figsize=(32, 8))
+    
+    FONT_SIZE = 24
+    print("plotting ASTS ...")
+    alg = ASTS(n, k, A, confidence, "G")
+    alg.plot_w(mus, A, div=div, ax=axis[0])
+    axis[0].set_title('ASTS', fontsize=FONT_SIZE)
+
+    print("plotting MuSTS ...")    
+    alg = MuSTS(n, k, mus, confidence, "G")
+    alg.plot_w(mus, A, div=div, ax=axis[1])
+    axis[1].set_title('MuSTS', fontsize=FONT_SIZE)
+    
+    print("plotting STS ...")
+    alg = STS(n, k, confidence, "G")
+    alg.plot_w(mus, A, div=div, ax=axis[2])
+    axis[2].set_title('STS', fontsize=FONT_SIZE)
+    
+    print("plotting SGTS ...")
+    alg = SGTS(n, k, confidence, "G")
+    alg.plot_w(mus, A, div=div, ax=axis[3])
+    axis[3].set_title('SGTS', fontsize=FONT_SIZE)
+    
+    plt.show()
+
 if __name__ == "__main__":
     # create_boxplots()
-    create_convergeplots("instance_7", "STS_G")
+    # create_convergeplots("instance_7", "STS_G")
+    create_simplex_heatmaps("instance10")

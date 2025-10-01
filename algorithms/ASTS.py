@@ -3,6 +3,8 @@ import cvxpy as cp
 from algorithms.TS import TS
 import itertools
 
+import matplotlib.pyplot as plt
+
 # known A Separator Track and Stop
 class ASTS(TS):
     def __init__(self, n, k, A, confidence, tracking, mode = {'average_w': False}):
@@ -88,7 +90,7 @@ class ASTS(TS):
 
         return np.ones(self.n) / self.n
 
-    def plot_w(self, mu, A, div=101):
+    def plot_w(self, mu, A, div=101, ax=None):
         if self.n != 3:
             print("plotting only available for n=3")
             return
@@ -116,8 +118,7 @@ class ASTS(TS):
             
             Ts[tuple(w)] = obj
             
-        print(max(Ts, key=Ts.get))
-        draw_simplex_heatmap(Ts)
+        return draw_simplex_heatmap(Ts, ax)
 
     def get_action(self):
         # Initialization phase
