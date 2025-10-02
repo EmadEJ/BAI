@@ -30,13 +30,14 @@ class Environment:
         self.T += 1
         return post_action, reward
 
-    def run_STS(self, alg: STS, verbose=False):
+    def run_STS(self, alg: STS, verbose=False, detailed=False):
         w_s = []
-        lambda_lbs = []
         lambdas = []
-        # true_lambdas = []
         betas = []
-        beta2s = []
+        if detailed:
+            lambda_lbs = []
+            true_lambdas = []
+            beta2s = []
 
         if verbose:
             alg.plot_w(self.mus, self.A)
@@ -46,8 +47,9 @@ class Environment:
             print(f"Asymptotically expecting {dB(alg.confidence) * T_star} arm pulls!")
             print(T_star, w_star)
 
+        stopping_rule = alg.stopping_rule_lb if detailed else alg.stopping_rule
         in_init = True
-        while in_init or not alg.stopping_rule()[0]:
+        while in_init or not stopping_rule()[0]:
             # Select an action using the algorithm
             action, init = alg.get_action()
             
@@ -63,19 +65,24 @@ class Environment:
                 w = alg.optimal_w().tolist()
                 w_s.append(w)
 
-                lambda_lb_t = alg.lambda_lb()
-                # lambda_true = alg.lambda_true()
-                _, _, beta_t = alg.stopping_rule()
-                _, lambda_t, beta_t2 = alg.stopping_rule2()
-                lambda_lbs.append(lambda_lb_t)
-                # true_lambdas.append(lambda_true)
-                lambdas.append(lambda_t)
+                _, lambda_t, beta_t = alg.stopping_rule()
                 betas.append(beta_t)
-                beta2s.append(beta_t2)
+                lambdas.append(lambda_t)
+                if detailed:
+                    lambda_lb_t = alg.lambda_lb()
+                    lambda_true = alg.lambda_true()
+                    _, _, beta_t2 = alg.stopping_rule2()
+                    lambda_lbs.append(lambda_lb_t)
+                    true_lambdas.append(lambda_true)
+                    beta2s.append(beta_t2)
 
                 if verbose:
                     print(f"Round {self.T}, action {action}, post_action {post_action}, reward {reward}")
-                    print(f"lambda_lb_t: {lambda_lb_t}, lambda_hat_t: {lambda_t},\nbeta_t: {beta_t}, beta_t2: {beta_t2}, confidence: {alg.confidence}")
+                    if detailed:
+                        print(f"lambda_lb_t: {lambda_lb_t}, lambda_hat_t: {lambda_t}, lambda_true_t: {lambda_true}")
+                        print(f"beta_t: {beta_t}, beta_t2: {beta_t2}, confidence: {alg.confidence}")
+                    else:
+                        print(f"lambda_hat_t: {lambda_t}, beta_t: {beta_t}, confidence: {alg.confidence}")
                     print(f"w: {w}")
                     print(f"A_hat: {alg.get_A_hat()}")
                     print(f"mu_hat: {alg.get_mu_hat()}")
@@ -85,15 +92,16 @@ class Environment:
         if verbose:
             print("number of failed optimization rounds is ", alg.optimization_failed_number_of_rounds)
         
-        lambda_lb_t = alg.lambda_lb()
-        # lambda_true = alg.lambda_true()
-        _, _, beta_t = alg.stopping_rule()
-        _, lambda_t, beta_t2 = alg.stopping_rule2()
-        lambda_lbs.append(lambda_lb_t)
-        # true_lambdas.append(lambda_true)
-        lambdas.append(lambda_t)
+        _, lambda_t, beta_t = alg.stopping_rule()
         betas.append(beta_t)
-        beta2s.append(beta_t2)
+        lambdas.append(lambda_t)
+        if detailed:
+            lambda_lb_t = alg.lambda_lb()
+            lambda_true = alg.lambda_true()
+            _, _, beta_t2 = alg.stopping_rule2()
+            lambda_lbs.append(lambda_lb_t)
+            true_lambdas.append(lambda_true)
+            beta2s.append(beta_t2)
         
         best_arm = int(alg.best_empirical_arm()[0])
 
@@ -101,12 +109,14 @@ class Environment:
             'T': self.T,
             'best_arm': best_arm,
             'w_s': w_s,
-            'lambda_lbs': lambda_lbs,
-            # 'true_lambdas': true_lambdas, 
             'lambdas': lambdas,
             'betas': betas,
-            'beta2s': beta2s
         }
+        if detailed:
+            result['lambda_lbs'] = lambda_lbs
+            result['true_lambdas'] = true_lambdas
+            result['beta2s'] = beta2s
+        
         return result
     
     def run_MuSTS(self, alg: MuSTS, verbose=False):
@@ -269,10 +279,10 @@ class Environment:
         }
         return result
 
-    def run(self, confidence, algorithm, tracking, mode = {'average_w': False}, verbose=False):
+    def run(self, confidence, algorithm, tracking, mode = {}, verbose=False, detailed=False):
         if algorithm == "STS":
             alg = STS(self.n, self.k, confidence, tracking, mode)
-            return self.run_STS(alg, verbose=verbose)
+            return self.run_STS(alg, verbose=verbose, detailed=detailed)
         if algorithm == "ASTS":
             alg = ASTS(self.n, self.k, self.A, confidence, tracking, mode)
             return self.run_ASTS(alg, verbose=verbose)

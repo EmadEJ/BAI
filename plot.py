@@ -11,10 +11,10 @@ from environment import *
 # --- Configuration ---
 # This path points to the directory with your JSON files.
 DATA_DIRECTORY = "results/simulation/"
-INSTANCES = ["instance_11", "instance_12"]
+INSTANCES = ["instance_12"]
 ALGORITHMS = ["ASTS_G", "MuSTS_G", "STS_G", "SGTS_G"]
-ALG_NAMES = [r"GTS-$A$", r"GTS-$\mu$", "GTS-Unkown", "GTS-SG"]
-INS_NAMES = [r"Hard $A$", r"Hard $\mu$"]
+ALG_NAMES = [r"GTS-$\mathcal{A}$", r"GTS-$\mu$", "GTS-Unknown", "GTS-SG"]
+INS_NAMES = [r"Hard $\mu$"]
 # Number of runs to read from each JSON file
 RUN_COUNT = 100
 # --- End of Configuration ---
@@ -63,11 +63,11 @@ def create_boxplots():
         kind="box",
         palette="deep",
         height=6,
-        aspect=0.8,
+        aspect=1,
         showmeans=True,
         meanprops={"marker":"*", "markerfacecolor":"white", "markeredgecolor":"black", "markersize":FONT_SIZE}
     )
-
+    
     # Set axis labels font sizes
     g.set_xlabels(size=FONT_SIZE-1)
     g.set_ylabels(size=FONT_SIZE-1)
@@ -93,9 +93,8 @@ def create_boxplots():
     #                     ha='left', va='center', fontsize=8, color='black', fontweight='normal')
 
     # Set titles and labels
-    g.fig.suptitle('Algorithm Performance Comparison', y=1.03, fontsize=FONT_SIZE)
     g.set_axis_labels("Algorithm", "Sample complexity", fontsize=FONT_SIZE)
-    g.set_titles("{col_name}")
+    g.set_titles("{col_name}", size=FONT_SIZE)
     g.set(yscale="log")
 
     plt.show()
@@ -120,14 +119,14 @@ def create_convergeplots(instance, algorithm, log_period=10):
     plt.plot(x, data['lambdas'], label="GLR-heuristic", linewidth=LINE_WIDTH)
     plt.plot(x, data['lambda_lbs'], label="GLR-relaxation", linewidth=LINE_WIDTH)
     
-    plt.plot(x, data['true_lambdas'], ":", label="GLR-ground trouth", color="k", linewidth=LINE_WIDTH)
+    plt.plot(x, data['true_lambdas'], ":", label="GLR-ground truth", color="k", linewidth=LINE_WIDTH)
     
     plt.plot(x, data['betas'], label=r"Our $\beta$", linewidth=LINE_WIDTH)
     plt.plot(x, data['beta2s'], label=r"Naive $\beta$", linewidth=LINE_WIDTH)
     
     plt.rcParams.update({'font.size': FONT_SIZE})
     plt.tick_params(axis='both', which='major', labelsize=FONT_SIZE)
-    plt.xlabel("Arm pulls", fontsize=FONT_SIZE)
+    plt.xlabel("timestep t", fontsize=FONT_SIZE)
     plt.legend()
     plt.show()
 
@@ -161,6 +160,6 @@ def create_simplex_heatmaps(instance, div=101):
     plt.show()
 
 if __name__ == "__main__":
-    create_boxplots()
-    # create_convergeplots("instance_5", "STS_G")
+    # create_boxplots()
+    create_convergeplots("instance_8", "STS_G")
     # create_simplex_heatmaps("instance10")

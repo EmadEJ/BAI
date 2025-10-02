@@ -23,7 +23,14 @@ def simulate(verbose=False):
     if args.cnt == 1:  
         st_time = time.time()
         env = Environment(mus, A, n, k)
-        result = env.run(confidence, args.algorithm, args.tracking, mode, verbose=True)
+        result = env.run(
+            confidence, 
+            args.algorithm, 
+            args.tracking, 
+            mode, 
+            verbose=True, 
+            detailed=args.detailed
+        )
         fn_time = time.time()
         
         if args.store:
@@ -41,9 +48,9 @@ def simulate(verbose=False):
             x = range(0, len(result['lambdas']) * env.log_period, env.log_period)
             plt.plot(x, result['lambdas'], label="GLR upper bound", linewidth=3)
             plt.plot(x, result['betas'], label="stopping threshold", linewidth=3)
-            if args.algorithm == "STS":
+            if args.algorithm == "STS" and args.detailed:
                 plt.plot(x, result['lambda_lbs'], label="GLR lower bound", linewidth=3)
-                # plt.plot(x, result['true_lambdas'], ":", label="True GLR", color="k", linewidth=3)
+                plt.plot(x, result['true_lambdas'], ":", label="True GLR", color="k", linewidth=3)
                 plt.plot(x, result['beta2s'], label="union bound stopping threshold", linewidth=3)
             plt.xlabel("Arm pulls")
             plt.ylabel("GLR value")

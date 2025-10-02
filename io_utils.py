@@ -12,7 +12,7 @@ def get_arguments():
     parser.add_argument("--tracking", type=str, required=False, default='G')
     parser.add_argument("--average_w", type=bool, required=False, default=False)
     parser.add_argument("--fast", type=bool, required=False, default=False)
-    parser.add_argument("--stopping_rule", type=str, required=False, default='d')
+    parser.add_argument("--detailed", type=bool, required=False, default=False)
     parser.add_argument("--cnt", type=int, required=False, default=1)
     
     return parser.parse_args()
