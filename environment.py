@@ -45,7 +45,7 @@ class Environment:
         T_star, w_star = alg.get_T_star(self.mus, self.A)
         if verbose:
             print(f"Asymptotically expecting {dB(alg.confidence) * T_star} arm pulls!")
-            print(T_star, w_star)
+            # print(T_star, w_star)
 
         stopping_rule = alg.stopping_rule_lb if detailed else alg.stopping_rule
         in_init = True

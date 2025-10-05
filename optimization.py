@@ -1094,7 +1094,7 @@ def create_testset(n, k, cnt):
         A = np.random.rand(n, k)
         A = (A.T / np.sum(A, axis=1)).T
         
-        obj_star, w_star = ternary_search(mu, A, verbose=False)
+        obj_star, w_star = grid_search(mu, A, verbose=False)
         
         idx = len(testset) + 1
         testset.append({

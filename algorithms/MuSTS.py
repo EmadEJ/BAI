@@ -7,13 +7,15 @@ from tqdm import tqdm
 
 # known Mu Separator Track and Stop
 class MuSTS(TS):
-    def __init__(self, n, k, mu, confidence, tracking, mode = {'average_w': False}):
+    def __init__(self, n, k, mu, confidence, tracking, mode = {'average_w': False, 'fast': False}):
         super().__init__(n, k, confidence, tracking, mode)
         self.mu = mu
         
         self.N_A = np.zeros(n)
         self.N_Z = np.zeros(k)
         self.cnt_post_actions = np.zeros((n, k))
+        
+        self.last_w = None
     
     def get_A_hat(self):
         return self.cnt_post_actions / self.N_A.reshape((self.n, 1))
@@ -91,6 +93,16 @@ class MuSTS(TS):
         return lambda_hat_t > beta_t, lambda_hat_t, beta_t
 
     def optimal_w(self):
+        if self.mode['fast'] and self.last_w is not None:
+            if self.T > 100 and self.T % 10 != 0:
+                return self.last_w
+            if self.T > 1000 and self.T % 100 != 0:
+                return self.last_w
+            if self.T > 10000 and self.T % 1000 != 0:
+                return self.last_w
+            if self.T > 100000 and self.T % 10000 != 0:
+                return self.last_w
+        
         A_hat = self.get_A_hat()
         i_star, _, _ = self.best_empirical_arm()
         
@@ -148,6 +160,7 @@ class MuSTS(TS):
         
         w_star = fixed_w_istar(res.x, give_w=True)
         w_star = w_star / np.sum(w_star)
+        self.last_w = w_star
         
         return w_star
     

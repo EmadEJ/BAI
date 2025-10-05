@@ -126,7 +126,7 @@ def create_convergeplots(instance, algorithm, log_period=10):
     
     plt.rcParams.update({'font.size': FONT_SIZE})
     plt.tick_params(axis='both', which='major', labelsize=FONT_SIZE)
-    plt.xlabel("timestep t", fontsize=FONT_SIZE)
+    plt.xlabel("Timestep t", fontsize=FONT_SIZE)
     plt.legend()
     plt.show()
 

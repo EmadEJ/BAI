@@ -114,14 +114,14 @@ class STS(TS):
         return lambda_lb > beta_t, lambda_lb, beta_t
 
     def optimal_w(self):
-        if self.mode['fast']:
-            if self.T > 1000 and self.T % 10 != 0:
+        if self.mode['fast'] and self.last_w is not None:
+            if self.T > 100 and self.T % 10 != 0:
                 return self.last_w
-            if self.T > 10000 and self.T % 100 != 0:
+            if self.T > 1000 and self.T % 100 != 0:
                 return self.last_w
-            if self.T > 100000 and self.T % 1000 != 0:
+            if self.T > 10000 and self.T % 1000 != 0:
                 return self.last_w
-            if self.T > 1000000 and self.T % 10000 != 0:
+            if self.T > 100000 and self.T % 10000 != 0:
                 return self.last_w
         
         mu_hat = self.get_mu_hat()
