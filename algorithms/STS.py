@@ -123,6 +123,8 @@ class STS(TS):
                 return self.last_w
             if self.T > 100000 and self.T % 10000 != 0:
                 return self.last_w
+            if self.T > 1000000 and self.T % 100000 != 0:
+                return self.last_w
         
         mu_hat = self.get_mu_hat()
         A_hat = self.get_A_hat()

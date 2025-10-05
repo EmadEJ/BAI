@@ -102,6 +102,8 @@ class MuSTS(TS):
                 return self.last_w
             if self.T > 100000 and self.T % 10000 != 0:
                 return self.last_w
+            if self.T > 1000000 and self.T % 100000 != 0:
+                return self.last_w
         
         A_hat = self.get_A_hat()
         i_star, _, _ = self.best_empirical_arm()
