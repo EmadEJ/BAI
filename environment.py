@@ -15,7 +15,7 @@ class Environment:
         self.n = n
         self.k = k
         self.T = 0
-        self.samples = np.random.normal(loc=0, scale=1, size=1000000)  # sample noise at each arm pull
+        self.samples = np.random.normal(loc=0, scale=1, size=10000000)  # sample noise at each arm pull
         
         self.means = np.dot(self.A, self.mus)
         self.best_arm = np.argmax(self.means)
