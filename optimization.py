@@ -540,7 +540,7 @@ ALGS_GLR = {
     "lowerbound": lowerbound_GLR
 }
 
-def optimize_GLR(mu, A, N_A, N_Z, alg="scipy_softmax", verbose=False):
+def optimize_GLR(mu, A, N_A, N_Z, alg="ours", verbose=False):
     if alg not in ALGS_GLR.keys():
         print("Invalid GLR alg name!")
         return None

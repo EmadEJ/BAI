@@ -5,7 +5,7 @@ import itertools
 
 # Sub-Gaussian Seperator Track and Stop
 class SGTS(TS):
-    def __init__(self, n, k, confidence, tracking, mode = {'average_w': False}):
+    def __init__(self, n, k, confidence, tracking, mode = {'average_w': False, 'fast': False}):
         # Note that k is not used throughout the algorithm because we are blind to post-actions
         super().__init__(n, k, confidence, tracking, mode)
         
@@ -13,6 +13,8 @@ class SGTS(TS):
         self.sum_of_rewards = np.zeros(n)
         
         self.var = 5/4  # sub-Gaussian parameter
+        
+        self.last_w = None
 
     def get_means_hat(self):
         return self.sum_of_rewards / self.N_A
@@ -61,6 +63,16 @@ class SGTS(TS):
         return lambda_hat_t > beta_t, lambda_hat_t, beta_t
 
     def optimal_w(self):
+        if self.mode['fast'] and self.last_w is not None:
+            if self.T > 1000 and self.T % 10 != 0:
+                return self.last_w
+            if self.T > 10000 and self.T % 100 != 0:
+                return self.last_w
+            if self.T > 100000 and self.T % 1000 != 0:
+                return self.last_w
+            if self.T > 1000000 and self.T % 10000 != 0:
+                return self.last_w
+        
         i_star, _, delta_hat = self.best_empirical_arm()
 
         w = cp.Variable(self.n)
@@ -84,6 +96,7 @@ class SGTS(TS):
             if problem.status != cp.OPTIMAL:
                 self.optimization_failed_flag = True
                 return np.ones(self.n) / self.n
+            self.last_w = w.value
             return w.value
         except Exception as e:
             self.optimization_failed_flag = True
