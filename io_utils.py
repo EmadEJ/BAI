@@ -6,11 +6,12 @@ import numpy as np
 def get_arguments():
     parser = argparse.ArgumentParser(description="Parse variables simulate")
     
-    parser.add_argument("--algorithm", type=str, required=False, default='STS')
-    parser.add_argument("--instance_index", type=int, required=False, default=0)
+    parser.add_argument("--algorithm", type=str, required=True, default='STS')
+    parser.add_argument("--instance_index", type=int, required=True, default=0)
     parser.add_argument("--store", type=bool, required=False, default=False)
     parser.add_argument("--tracking", type=str, required=False, default='G')
     parser.add_argument("--average_w", type=bool, required=False, default=False)
+    parser.add_argument("--log_period", type=int, required=False, default=10)
     parser.add_argument("--fast", type=bool, required=False, default=False)
     parser.add_argument("--detailed", type=bool, required=False, default=False)
     parser.add_argument("--cnt", type=int, required=False, default=1)

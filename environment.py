@@ -8,7 +8,7 @@ from utils import *
 
 class Environment:
     
-    def __init__(self, mus, A, n, k):
+    def __init__(self, mus, A, n, k, log_period=10):
 
         self.mus = mus  # mean reward of each context
         self.A = A  # context given arm probabilty matrix
@@ -21,7 +21,7 @@ class Environment:
         self.best_arm = np.argmax(self.means)
         self.delta = self.means[self.best_arm] - self.means
                 
-        self.log_period = 10  # every <log_period> iterations save the data of the arms played up to now and optimal w
+        self.log_period = log_period  # log data every <log_period iteration>
 
 
     def take_action(self, action):

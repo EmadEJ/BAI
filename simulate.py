@@ -16,13 +16,13 @@ def simulate(verbose=False):
     n, k, confidence, mus, A = read_instance_from_json(instance_path)
     mode = {
         'average_w': args.average_w,
-        'fast': args.fast
+        'fast': args.fast,
     }
     best_arm = np.argmax(np.dot(A, mus))
 
     if args.cnt == 1:  
         st_time = time.time()
-        env = Environment(mus, A, n, k)
+        env = Environment(mus, A, n, k, args.log_period)
         result = env.run(
             confidence, 
             args.algorithm, 
