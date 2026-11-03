@@ -83,10 +83,10 @@ def load_runs(index, algorithm, out_dir="results/simulation/"):
 ############################## figure 2
 
 def fig2():
-    # top: the whole run on a log scale with the proven zone of L, bottom: zoom on the stopping times
-    fig, axes = plt.subplots(2, len(FIG2_INSTANCES), figsize=(DOUBLE, 4.6), gridspec_kw={"height_ratios": [1.1, 1]})
+    # the whole run on a linear scale, cut a bit above the naive threshold so that both thresholds are visible
+    fig, axes = plt.subplots(1, len(FIG2_INSTANCES), figsize=(DOUBLE, 2.9))
     statistics = [("reference", "k"), ("L", C_L), ("L_naive", C_NAIVE)]
-    for c, index in enumerate(FIG2_INSTANCES):
+    for ax, index in zip(axes, FIG2_INSTANCES):
         d = load_json(f"results/glr_trace/instance{index}.json")
         if d is None:
             continue
@@ -100,35 +100,26 @@ def fig2():
                 above = np.nonzero(tr[key] > tr[beta])[0]
                 crossing[key, beta] = above[0] if len(above) else None
 
-        for r, ax in enumerate(axes[:, c]):
-            ax.fill_between(T, L, upper, color=C_L, alpha=0.13, lw=0)
-            ax.plot(T, upper, color=C_L, lw=0.6, alpha=0.5)
-            ax.plot(T, tr['plain'], color=C_PLAIN, lw=2.6, alpha=0.9)
-            ax.plot(T, tr['reference'], color="k", ls=(0, (1.2, 1.2)), lw=1.3)
-            ax.plot(T, L, color=C_L)
-            ax.plot(T, tr['L_naive'], color=C_NAIVE)
-            ax.plot(T, tr['beta'], color=C_BETA, lw=1.2)
-            ax.plot(T, tr['naive_beta'], color=C_BETA, lw=1.2, ls="--")
-            for key, color in statistics:
-                for beta, face in [("beta", color), ("naive_beta", "white")]:
-                    j = crossing[key, beta]
-                    if j is not None:
-                        ax.plot(T[j], tr[beta][j], marker="o", ms=4.5, mfc=face, mec=color, mew=1.1, zorder=5)
-                        if beta == "beta":
-                            ax.axvline(T[j], color=color, lw=0.6, ls=":", alpha=0.8)
-            ax.set_xlim(0, T[-1])
-
-        top, bottom = axes[0, c], axes[1, c]
-        top.set_yscale("log")
-        top.set_ylim(max(np.nanmin(L[L > 0]), 0.3), 2 * np.nanmax(upper))
-        top.set_title(f"$n={d['n']},\\ k={d['k']},\\ \\delta=10^{{{int(np.log10(d['confidence']))}}}$")
-        first = min(j for j in crossing.values() if j is not None)
-        bottom.set_xlim(0.6 * T[first], T[-1])
-        window = T >= 0.6 * T[first]
-        bottom.set_ylim(0.6 * tr['beta'][window].min(), 1.3 * tr['naive_beta'][window].max())
-        bottom.set_xlabel("Timestep $t$")
-    axes[0, 0].set_ylabel("statistic (log scale)")
-    axes[1, 0].set_ylabel("statistic, near stopping")
+        ax.fill_between(T, L, upper, color=C_L, alpha=0.13, lw=0)
+        ax.plot(T, upper, color=C_L, lw=0.6, alpha=0.5)
+        ax.plot(T, tr['plain'], color=C_PLAIN, lw=2.6, alpha=0.9)
+        ax.plot(T, tr['reference'], color="k", ls=(0, (1.2, 1.2)), lw=1.3)
+        ax.plot(T, L, color=C_L)
+        ax.plot(T, tr['L_naive'], color=C_NAIVE)
+        ax.plot(T, tr['beta'], color=C_BETA, lw=1.2)
+        ax.plot(T, tr['naive_beta'], color=C_BETA, lw=1.2, ls="--")
+        for key, color in statistics:
+            for beta, face in [("beta", color), ("naive_beta", "white")]:
+                j = crossing[key, beta]
+                if j is not None:
+                    ax.plot(T[j], tr[beta][j], marker="o", ms=4.5, mfc=face, mec=color, mew=1.1, zorder=5)
+                    if beta == "beta":
+                        ax.axvline(T[j], color=color, lw=0.6, ls=":", alpha=0.8)
+        ax.set_xlim(0, T[-1])
+        ax.set_ylim(0, 1.35 * tr['naive_beta'].max())
+        ax.set_xlabel("Timestep $t$")
+        ax.set_title(f"$n={d['n']},\\ k={d['k']},\\ \\delta=10^{{{int(np.log10(d['confidence']))}}}$")
+    axes[0].set_ylabel("statistic")
 
     handles = [
         Line2D([], [], color=C_PLAIN, lw=2.6, label="GLR, plain solver"),
@@ -141,7 +132,7 @@ def fig2():
         Line2D([], [], marker="o", ls="", mfc="0.4", mec="0.4", ms=4.5, label=r"stops with our $\beta$"),
         Line2D([], [], marker="o", ls="", mfc="white", mec="0.4", mew=1.1, ms=4.5, label=r"stops with naive $\beta$"),
     ]
-    fig.tight_layout(rect=(0, 0.07, 1, 1))
+    fig.tight_layout(rect=(0, 0.11, 1, 1))
     fig.legend(handles=handles, loc="lower center", ncol=5, bbox_to_anchor=(0.5, -0.005), handlelength=1.6, columnspacing=1.0)
     save(fig, "fig2_glr_trace")
 
@@ -267,10 +258,8 @@ def tightness_pairs():
 
 def fig_tightness():
     results, rows = tightness_pairs()
-    fig, axes = plt.subplots(1, 2, figsize=(DOUBLE, 2.6))
-
-    # (a) hard families: A_i = (1 - eps) A_star + eps A0_i
-    ax = axes[0]
+    # hard families: A_i = (1 - eps) A_star + eps A0_i
+    fig, ax = plt.subplots(figsize=(SINGLE, 2.4))
     hard = [row for row in rows if row['family'] == 'hard']
     eps_values = sorted({row['eps'] for row in hard}, reverse=True)
     curves = [
@@ -294,33 +283,8 @@ def fig_tightness():
     ax.invert_xaxis()
     ax.set_xlabel(r"$\epsilon$ (smaller is harder)")
     ax.set_ylabel("ratio to the true GLR")
-    ax.set_title("(a) hard families, median and IQR")
     ax.legend(loc="center right", fontsize=7.5)
 
-    # (b) random instances: ratio against the hardness 1 / Lambda_i (w sums to 1, so it is the number of samples per
-    # unit of evidence for this pair), binned
-    ax = axes[1]
-    pairs = [row for row in rows if row['family'] == 'random']
-    g = np.array([1 / row['Lambda'] for row in pairs])
-    edges = np.logspace(np.log10(g.min()), np.log10(g.max()), 12)
-    centers = np.sqrt(edges[:-1] * edges[1:])
-    for key, label, color, ls, marker in curves:
-        ratio = np.array([(row['factor'] if key == 'factor' else row['Lambda'] / row[key]) for row in pairs])
-        if key != "factor":
-            ax.scatter(g, ratio, s=3, color=color, alpha=0.18, lw=0, rasterized=True)
-        stats = [(c, np.median(ratio[m]), np.quantile(ratio[m], 0.25), np.quantile(ratio[m], 0.75))
-                 for c, m in ((c, (g >= lo) & (g < hi)) for c, lo, hi in zip(centers, edges[:-1], edges[1:])) if m.sum() >= 15]
-        c, med, lo, hi = map(np.array, zip(*stats))
-        ax.plot(c, med, color=color, ls=ls, marker=marker, ms=3.5, label=label)
-        if key != "factor":
-            ax.fill_between(c, lo, hi, color=color, alpha=0.15, lw=0)
-    ax.axhline(1, color="k", lw=0.6)
-    ax.set_xscale("log")
-    ax.set_yscale("log")
-    ax.set_ylim(0.8, 300)
-    ax.set_xlabel(r"hardness $1 / \Lambda_i(w, A^\top w)$, with $\sum_i w_i = 1$")
-    ax.set_ylabel("ratio to the true GLR")
-    ax.set_title(f"(b) random instances ({len(pairs)} pairs), binned median and IQR")
     fig.tight_layout()
     save(fig, "fig_bound_tightness")
 
