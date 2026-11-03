@@ -58,6 +58,7 @@ Single experiments:
 
 ```bash
 python simulate.py --algorithm STS-LB --instance_index 11 --runs 100 --jobs 8
+python simulate.py --algorithm ASTS SGTS --instance_index 32 33 --runs 20 --jobs 8
 python simulate.py --algorithm ASTS --instance_index 21 --runs 200 --delta 0.1 --out_dir results/delta_correctness/ --jobs 8
 python glr_trace.py --instance_index 10 --log_period 50 --jobs 8
 python heatmaps.py --instance_index 10 --div 61 --jobs 8
@@ -65,7 +66,27 @@ python bound_tightness.py --jobs 8
 python optimization.py -n 2 -k 3 --fixed_w --name plain   # checks the GLR solver against the grid search of testsets/
 ```
 
-Do not run the same (instance, algorithm) twice at the same time: both processes would write the same result file.
+`simulate.py` also takes several algorithms and instances (`--algorithm STS-LB ASTS --instance_index 11 12`), all
+their missing runs then share one pool, the slowest algorithm first. Do not run the same (instance, algorithm) in two
+commands at the same time: both would write the same result file. To stop the runs, use Ctrl-C (or
+`pkill -f simulate.py`; on macOS the workers are `multiprocessing.spawn` processes and need to be killed too).
+
+### Expected runtimes
+
+Measured on one core of a laptop (Apple M5, all cores busy), a server core can be up to 2x slower. `figures/tables.md`
+has the measured time of every stored run.
+
+| algorithm | time per run | |
+|---|---|---|
+| `ASTS`, `SGTS`, `STS-LB` | 1 s to 1.5 min | negligible |
+| `MuSTS` | 0.5 to 6 min | about 9 CPU-hours for figure 5 |
+| `STS-Plain` | 2 min (instance 12) to 20 min (instance 11), 20 min to 3 h on figure 5 | 97% of it is the optimization of `w` |
+
+| experiment | CPU-hours (`STS-Plain` / everything else) |
+|---|---|
+| `fig3` (100 runs) | about 37 / 4 |
+| `delta` (200 runs, 2 instances) | about 78 / 3 |
+| `fig5` (20 runs) | about 390 / 11 |
 
 ### On the server
 

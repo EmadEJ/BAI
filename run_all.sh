@@ -8,16 +8,12 @@ set -e
 cd "$(dirname "$0")"
 PYTHON=${PYTHON:-python}
 JOBS=${JOBS:-$($PYTHON -c "import os; print(os.cpu_count())")}
-ALGORITHMS="STS-LB ASTS SGTS MuSTS STS-Plain"  # the slow ones last
+ALGORITHMS="STS-LB ASTS SGTS MuSTS STS-Plain"
 mkdir -p logs
 
-run_simulations () {  # instances, runs, extra arguments
-    for index in $1; do
-        for alg in $ALGORITHMS; do
-            echo "$(date '+%F %T') instance $index $alg"
-            $PYTHON -u simulate.py --algorithm $alg --instance_index $index --runs $2 --jobs $JOBS $3 >> logs/sim_${index}_${alg}$4.log 2>&1
-        done
-    done
+run_simulations () {  # instances, runs, extra arguments, log name
+    echo "$(date '+%F %T') instances $1"
+    $PYTHON -u simulate.py --algorithm $ALGORITHMS --instance_index $1 --runs $2 --jobs $JOBS $3 >> logs/sim_$4.log 2>&1
 }
 
 wants () {  # is $1 one of the targets given on the command line
@@ -36,13 +32,13 @@ if wants light; then
     $PYTHON -u heatmaps.py --instance_index 10 --div 61 --jobs $JOBS > logs/heatmaps_10.log 2>&1
 fi
 if wants fig3; then
-    run_simulations "11 12" 100
+    run_simulations "11 12" 100 "" fig3
 fi
 if wants delta; then
-    run_simulations "21 22" 200 "--delta 0.1 --out_dir results/delta_correctness/" "_delta"
+    run_simulations "21 22" 200 "--delta 0.1 --out_dir results/delta_correctness/" delta
 fi
 if wants fig5; then
-    run_simulations "32 33 34 62 63 64 92 93 94 122 123" 20
+    run_simulations "32 33 34 62 63 64 92 93 94 122 123" 20 "" fig5
 fi
 $PYTHON plot.py all > logs/plot.log 2>&1
 echo "$(date '+%F %T') done"

@@ -10,8 +10,8 @@ INSTANCE_DIR = "instances/"
 def get_arguments():
     parser = argparse.ArgumentParser(description="Runs an algorithm several times on an instance and stores the results")
 
-    parser.add_argument("--algorithm", type=str, required=True, help="ASTS, MuSTS, STS-LB, STS-Plain or SGTS")
-    parser.add_argument("--instance_index", type=int, required=True)
+    parser.add_argument("--algorithm", type=str, nargs="+", required=True, help="some of ASTS, MuSTS, STS-LB, STS-Plain, SGTS")
+    parser.add_argument("--instance_index", type=int, nargs="+", required=True)
     parser.add_argument("--runs", type=int, default=1, help="total number of runs wanted in the result file")
     parser.add_argument("--jobs", type=int, default=1, help="number of runs in parallel")
     parser.add_argument("--delta", type=float, default=None, help="overrides the confidence of the instance")

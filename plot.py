@@ -29,6 +29,7 @@ SHORT_LABELS = {
     "STS-Plain": "GTS-Unknown\n(solver)",
     "SGTS": "GTS-SG",
 }
+TABLE_NAMES = {"ASTS": "GTS-A", "MuSTS": "GTS-mu", "STS-LB": "GTS-Unknown (LB)", "STS-Plain": "GTS-Unknown (solver)", "SGTS": "GTS-SG"}
 # Okabe-Ito colors, the same color for an algorithm and for the statistic it uses
 COLORS = {
     "ASTS": "#0072B2",
@@ -130,6 +131,14 @@ def fig2():
 
 ############################## figures 3 and 5
 
+def compact_number(x, pos=None):
+    # 2000 -> 2k, 1500000 -> 1.5M
+    for scale, suffix in [(1e6, "M"), (1e3, "k")]:
+        if x >= scale:
+            return f"{x / scale:g}{suffix}"
+    return f"{x:g}"
+
+
 def sample_complexity_panel(ax, index, show_labels=True):
     Ts = [np.array([run['T'] for run in load_runs(index, alg)]) for alg in ORDER]
     positions = [p for p, T in enumerate(Ts) if len(T)]
@@ -147,6 +156,9 @@ def sample_complexity_panel(ax, index, show_labels=True):
     for p, T in zip(positions, data):
         ax.scatter(p + rng.uniform(-0.18, 0.18, len(T)), T, s=4, color="k", alpha=0.35, lw=0, zorder=3)
     ax.set_yscale("log")
+    ax.yaxis.set_major_locator(matplotlib.ticker.LogLocator(base=10, subs=(1.0, 2.0, 5.0)))
+    ax.yaxis.set_major_formatter(matplotlib.ticker.FuncFormatter(compact_number))
+    ax.yaxis.set_minor_formatter(matplotlib.ticker.NullFormatter())
     ax.set_xticks(range(len(ORDER)))
     ax.set_xticklabels([SHORT_LABELS[alg] for alg in ORDER] if show_labels else [])
     ax.grid(axis="x", visible=False)
@@ -259,6 +271,9 @@ def fig_tightness():
     ax.axhline(1, color="k", lw=0.6)
     ax.set_xscale("log")
     ax.set_yscale("log")
+    ax.set_yticks([1, 2, 3, 5, 10])
+    ax.set_yticklabels(["1", "2", "3", "5", "10"])
+    ax.minorticks_off()
     ax.invert_xaxis()
     ax.set_xlabel(r"$\epsilon$ (smaller is harder)")
     ax.set_ylabel("ratio to the true GLR")
@@ -356,7 +371,7 @@ def simulation_tables():
             T = np.array([run['T'] for run in runs])
             times = np.array([run['time'] for run in runs])
             error = 1 - np.mean([run['correct'] for run in runs])
-            md.append(f"| {index} | {ALGORITHMS[alg]} | {len(runs)} | {T.mean():.0f} | {np.median(T):.0f} | {error:.3f} | "
+            md.append(f"| {index} | {TABLE_NAMES[alg]} | {len(runs)} | {T.mean():.0f} | {np.median(T):.0f} | {error:.3f} | "
                       f"{times.mean():.1f} | {times.sum() / T.sum() * 1e3:.3f} |")
 
     if Path(DELTA_DIR).exists():
@@ -366,7 +381,7 @@ def simulation_tables():
             data = load_json(path)
             runs = data['runs']
             errors = sum(not run['correct'] for run in runs)
-            md.append(f"| {data['instance']} | {ALGORITHMS[data['algorithm']]} | {data['confidence']} | {len(runs)} | {errors} | "
+            md.append(f"| {data['instance']} | {TABLE_NAMES[data['algorithm']]} | {data['confidence']} | {len(runs)} | {errors} | "
                       f"{errors / len(runs):.3f} | {clopper_pearson_upper(errors, len(runs)):.3f} |")
     return md
 

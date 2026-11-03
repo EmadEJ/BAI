@@ -1,0 +1,70 @@
+{
+ "instance": 22,
+ "algorithm": "MuSTS",
+ "confidence": 0.1,
+ "mode": {
+  "fast": true
+ },
+ "runs": [
+  {
+   "seed": 0,
+   "T": 199,
+   "best_arm": 0,
+   "correct": true,
+   "stopped": true,
+   "time": 22.09501886367798,
+   "time_sampling": 21.883283615112305,
+   "time_stopping": 0.2101576328277588,
+   "n_optimizations": 79,
+   "n_failed_optimizations": 0
+  },
+  {
+   "seed": 1,
+   "T": 180,
+   "best_arm": 0,
+   "correct": true,
+   "stopped": true,
+   "time": 24.73701000213623,
+   "time_sampling": 24.55282425880432,
+   "time_stopping": 0.18267083168029785,
+   "n_optimizations": 82,
+   "n_failed_optimizations": 0
+  },
+  {
+   "seed": 2,
+   "T": 232,
+   "best_arm": 0,
+   "correct": true,
+   "stopped": true,
+   "time": 22.419278144836426,
+   "time_sampling": 22.1840341091156,
+   "time_stopping": 0.23355531692504883,
+   "n_optimizations": 76,
+   "n_failed_optimizations": 0
+  },
+  {
+   "seed": 3,
+   "T": 51,
+   "best_arm": 0,
+   "correct": true,
+   "stopped": true,
+   "time": 3.8707151412963867,
+   "time_sampling": 3.8545525074005127,
+   "time_stopping": 0.015914201736450195,
+   "n_optimizations": 11,
+   "n_failed_optimizations": 0
+  },
+  {
+   "seed": 5,
+   "T": 72,
+   "best_arm": 0,
+   "correct": true,
+   "stopped": true,
+   "time": 7.991321086883545,
+   "time_sampling": 7.957247495651245,
+   "time_stopping": 0.0336611270904541,
+   "n_optimizations": 25,
+   "n_failed_optimizations": 0
+  }
+ ]
+}
