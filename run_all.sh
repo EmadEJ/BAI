@@ -29,6 +29,7 @@ if wants light; then
     $PYTHON -u bound_tightness.py --jobs $JOBS > logs/bound_tightness.log 2>&1
     $PYTHON -u glr_trace.py --instance_index 13 --log_period 20 --jobs $JOBS > logs/glr_trace_13.log 2>&1
     $PYTHON -u glr_trace.py --instance_index 14 --log_period 50 --jobs $JOBS > logs/glr_trace_14.log 2>&1
+    $PYTHON -u glr_trace.py --instance_index 15 --log_period 50 --reference_starts 100 --jobs $JOBS > logs/glr_trace_15.log 2>&1
     $PYTHON -u heatmaps.py --instance_index 10 --div 61 --jobs $JOBS > logs/heatmaps_10.log 2>&1
 fi
 if wants fig3; then

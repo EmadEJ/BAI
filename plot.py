@@ -82,11 +82,12 @@ def load_runs(index, algorithm, out_dir="results/simulation/"):
 
 ############################## figure 2
 
-def fig2():
+def fig2(instances=FIG2_INSTANCES, name="fig2_glr_trace"):
     # the whole run on a linear scale, cut a bit above the naive threshold so that both thresholds are visible
-    fig, axes = plt.subplots(1, len(FIG2_INSTANCES), figsize=(DOUBLE, 2.9))
+    fig, axes = plt.subplots(1, len(instances), figsize=(DOUBLE if len(instances) > 1 else 4.2, 2.9), squeeze=False)
+    axes = axes[0]
     statistics = [("reference", "k"), ("L", C_L), ("L_naive", C_NAIVE)]
-    for ax, index in zip(axes, FIG2_INSTANCES):
+    for ax, index in zip(axes, instances):
         d = load_json(f"results/glr_trace/instance{index}.json")
         if d is None:
             continue
@@ -132,9 +133,10 @@ def fig2():
         Line2D([], [], marker="o", ls="", mfc="0.4", mec="0.4", ms=4.5, label=r"stops with our $\beta$"),
         Line2D([], [], marker="o", ls="", mfc="white", mec="0.4", mew=1.1, ms=4.5, label=r"stops with naive $\beta$"),
     ]
-    fig.tight_layout(rect=(0, 0.11, 1, 1))
-    fig.legend(handles=handles, loc="lower center", ncol=5, bbox_to_anchor=(0.5, -0.005), handlelength=1.6, columnspacing=1.0)
-    save(fig, "fig2_glr_trace")
+    ncol = 5 if len(instances) > 1 else 3
+    fig.tight_layout(rect=(0, 0.11 if len(instances) > 1 else 0.22, 1, 1))
+    fig.legend(handles=handles, loc="lower center", ncol=ncol, bbox_to_anchor=(0.5, -0.005), handlelength=1.6, columnspacing=1.0)
+    save(fig, name)
 
 
 ############################## figures 3 and 5
@@ -397,6 +399,8 @@ if __name__ == "__main__":
         targets = ["fig2", "fig3", "fig4", "fig5", "tightness", "tables"]
     if "fig2" in targets:
         fig2()
+        if Path("results/glr_trace/instance15.json").exists():
+            fig2([15], "fig2_glr_trace_k4")  # the same on an instance with k = 4
     if "fig3" in targets:
         fig3()
     if "fig4" in targets:

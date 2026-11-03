@@ -21,7 +21,7 @@ pip install -r requirements.txt
 | `environment.py` | the bandit and the run loop (`Environment.run`) |
 | `utils.py` | `C_exp` of [KK21] and `W_bar` of [TD25a] used in the thresholds |
 | `simulate.py` | many runs of one algorithm on one instance (figures 3, 5 and the delta-correctness check) |
-| `glr_trace.py` | figure 2 (instances 13 and 14, delta = 1e-6) |
+| `glr_trace.py` | figure 2 (instances 13 and 14, delta = 1e-6), and the same on instance 15 (k = 4) |
 | `heatmaps.py` | figure 4 |
 | `bound_tightness.py` | the table and figure comparing the bounds with the true GLR |
 | `plot.py` | all figures and tables from the stored results |

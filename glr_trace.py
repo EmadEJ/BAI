@@ -10,7 +10,7 @@ from multiprocessing import Pool
 from io_utils import *
 from environment import Environment
 from algorithms.STS import STS
-from optimization import optimize_GLR
+from optimization import optimize_GLR, reference_GLR
 from lowerbound import L_bound, L_naive, proven_factor
 
 # Figure 2: the statistics along one run of GTS-Unknown (LB) on an instance
@@ -27,7 +27,7 @@ OUT_DIR = "results/glr_trace/"
 def statistics(job):
     warnings.filterwarnings("ignore")
     np.random.seed(0)
-    n, k, confidence, state = job
+    n, k, confidence, reference_starts, state = job
     alg = STS(n, k, confidence, "G")
     alg.load_state(state)
     mu_hat, A_hat, N_A, N_Z = alg.get_mu_hat(), alg.get_A_hat(), alg.N_A, alg.N_Z
@@ -37,7 +37,7 @@ def statistics(job):
     return {
         'T': state['T'],
         'plain': optimize_GLR(mu_hat, A_hat, N_A, N_Z, alg="plain")[0],
-        'reference': optimize_GLR(mu_hat, A_hat, N_A, N_Z, alg="reference")[0],
+        'reference': reference_GLR(mu_hat, A_hat, N_A, N_Z, n_random=reference_starts)[0],
         'L': np.min(L),
         'L_naive': np.min(L_naive(mu_hat, A_hat, N_A, N_Z)),
         'L_upper': np.min(factor * L),  # Lambda <= min_i factor_i L_i
@@ -55,6 +55,7 @@ if __name__ == "__main__":
     parser.add_argument("--jobs", type=int, default=1)
     parser.add_argument("--margin", type=float, default=0.15, help="fraction of rounds run after the last crossing")
     parser.add_argument("--max_T", type=int, default=10**6)
+    parser.add_argument("--reference_starts", type=int, default=20, help="random starting points of the reference GLR")
     args = parser.parse_args()
 
     n, k, confidence, mus, A = read_instance(args.instance_index)
@@ -79,7 +80,7 @@ if __name__ == "__main__":
     print(f"run until T={env.T} in {time.time() - st:.1f}s, logged {len(states)} rounds")
 
     with Pool(args.jobs) as pool:
-        stats = pool.map(statistics, [(n, k, confidence, state) for state in states], chunksize=4)
+        stats = pool.map(statistics, [(n, k, confidence, args.reference_starts, state) for state in states], chunksize=4)
     print(f"statistics computed in {time.time() - st:.0f}s")
 
     trace = {key: [s[key] for s in stats] for key in stats[0]}
@@ -89,6 +90,7 @@ if __name__ == "__main__":
         'confidence': confidence,
         'seed': args.seed,
         'log_period': args.log_period,
+        'reference_starts': args.reference_starts,
         'trace': trace,
     }
     save_json(OUT_DIR + f"instance{args.instance_index}.json", result)
