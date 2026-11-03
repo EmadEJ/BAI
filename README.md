@@ -16,12 +16,12 @@ pip install -r requirements.txt
 | file | content |
 |---|---|
 | `lowerbound.py` | the closed-form lower bounds `L_bound` (Theorem 1 of the bound report) and `L_naive` (Proposition 6), the proven factors (Theorems 2-3), and the convex sampling rule `optimal_w` |
-| `optimization.py` | the non-convex GLR: `plain_GLR` (local solver from a few starting points), `exact_GLR_k2` (closed form for k = 2), `reference_GLR` (exact for k = 2, 40 random starting points otherwise, our "true value"), and the w-optimization `optimize_bfgs` |
+| `optimization.py` | the non-convex GLR: `plain_GLR` (local solver from a few starting points), `exact_GLR_k2` (closed form for k = 2), `reference_GLR` (exact for k = 2, 20 random starting points otherwise, our "true value"), and the w-optimization `optimize_bfgs` |
 | `algorithms/` | `ASTS` (GTS-A), `MuSTS` (GTS-mu), `STS` (GTS-Unknown, `glr="lb"` or `glr="plain"`), `SGTS` (GTS-SG); `TS.py` has the tracking rules |
 | `environment.py` | the bandit and the run loop (`Environment.run`) |
 | `utils.py` | `C_exp` of [KK21] and `W_bar` of [TD25a] used in the thresholds |
 | `simulate.py` | many runs of one algorithm on one instance (figures 3, 5 and the delta-correctness check) |
-| `glr_trace.py` | figure 2 |
+| `glr_trace.py` | figure 2 (instances 13 and 14, delta = 1e-6) |
 | `heatmaps.py` | figure 4 |
 | `bound_tightness.py` | the table and figure comparing the bounds with the true GLR |
 | `plot.py` | all figures and tables from the stored results |
@@ -34,7 +34,7 @@ Algorithm names used on the command line and in the result files:
 | `ASTS` | GTS-A | exact GLR (A known) | exact (convex) |
 | `MuSTS` | GTS-mu | exact GLR (mu known) | Appendix F.1 |
 | `STS-LB` | GTS-Unknown (LB) | `min_i L_i(t) > beta(t, delta)` | maximizer of `w -> min_i L_i(w, A w)` (convex) |
-| `STS-Plain` | GTS-Unknown (solver) | plain solver of the GLR (an upper bound, not provably delta-correct) | plain solver inside BFGS |
+| `STS-Plain` | GTS-Unknown (solver) | plain solver of the GLR (an upper bound, not provably delta-correct); the closed form for k = 2 | the same GLR inside BFGS |
 | `SGTS` | GTS-SG | sub-Gaussian GLR, threshold of [TD25a] | exact (convex) |
 
 All algorithms recompute the optimal `w` only every `10^(d-2)` rounds once `t` has `d` digits (`--no_fast` turns this
@@ -60,7 +60,7 @@ Single experiments:
 python simulate.py --algorithm STS-LB --instance_index 11 --runs 100 --jobs 8
 python simulate.py --algorithm ASTS SGTS --instance_index 32 33 --runs 20 --jobs 8
 python simulate.py --algorithm ASTS --instance_index 21 --runs 200 --delta 0.1 --out_dir results/delta_correctness/ --jobs 8
-python glr_trace.py --instance_index 10 --log_period 50 --jobs 8
+python glr_trace.py --instance_index 14 --log_period 50 --jobs 8
 python heatmaps.py --instance_index 10 --div 61 --jobs 8
 python bound_tightness.py --jobs 8
 python optimization.py -n 2 -k 3 --fixed_w --name plain   # checks the GLR solver against the grid search of testsets/
@@ -79,31 +79,15 @@ has the measured time of every stored run.
 | algorithm | time per run | |
 |---|---|---|
 | `ASTS`, `SGTS`, `STS-LB` | 1 s to 1.5 min | negligible |
-| `MuSTS` | 0.5 to 6 min | about 9 CPU-hours for figure 5 |
-| `STS-Plain` | 2 min (instance 12) to 20 min (instance 11), 20 min to 3 h on figure 5 | 97% of it is the optimization of `w` |
+| `MuSTS` | 0.5 to 8 min | |
+| `STS-Plain`, k = 2 | seconds (closed-form GLR) | |
+| `STS-Plain`, k >= 3 | 35 min (instance 33) to about 4 h (instance 124) | 97% of it is the optimization of `w` |
 
 | experiment | CPU-hours (`STS-Plain` / everything else) |
 |---|---|
-| `fig3` (100 runs) | about 37 / 4 |
-| `delta` (200 runs, 2 instances) | about 78 / 3 |
-| `fig5` (20 runs) | about 390 / 11 |
-
-### On the server
-
-```bash
-git pull
-source .venv/bin/activate
-tmux new -s bai                      # or nohup, so that the runs survive the ssh session
-JOBS=$(nproc) ./run_all.sh fig3 fig5 delta
-# when it is done (logs/ has the progress of every run)
-python plot.py all
-git add results figures
-git commit -m "server runs"
-git push
-```
-
-The runs are parallelized over processes (`--jobs`), and `simulate.py` sets `OMP_NUM_THREADS=1` so that the
-processes do not compete for threads.
+| `fig3` (100 runs) | below 1 / about 4 |
+| `delta` (200 runs, 2 instances) | below 1 / about 3 |
+| `fig5` (20 runs) | about 380 / about 15 |
 
 ## Results
 

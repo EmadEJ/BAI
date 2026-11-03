@@ -212,14 +212,14 @@ def exact_GLR_k2(mu, A, N_A, N_Z, verbose=False):
     return obj_star, mu_star, A_star
 
 
-def reference_GLR_pair(mu, A, N_A, N_Z, s, n_random=40):
+def reference_GLR_pair(mu, A, N_A, N_Z, s, n_random=20):
     # our best estimate of the true (non-convex) Lambda_s: exact for k = 2, many starting points otherwise
     if A.shape[1] == 2:
         return exact_GLR_k2_pair(mu, A, N_A, N_Z, s)
     return plain_GLR_pair(mu, A, N_A, N_Z, s, n_random=n_random)
 
 
-def reference_GLR(mu, A, N_A, N_Z, n_random=40, verbose=False):
+def reference_GLR(mu, A, N_A, N_Z, n_random=20, verbose=False):
     # our best estimate of the true (non-convex) GLR: exact for k = 2, many starting points otherwise
     if A.shape[1] == 2:
         return exact_GLR_k2(mu, A, N_A, N_Z)

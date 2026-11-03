@@ -14,12 +14,21 @@ from lowerbound import L_bound, L_naive, proven_factor, variance, optimal_w
 # How far are the convex lower bounds from the true GLR Lambda_i (and from the proven factor)?
 #   python bound_tightness.py --jobs 8
 # Writes results/bound_tightness/pairs.json (one entry per pair (instance, i)) and
-# results/bound_tightness/characteristic_times.json (T*, U and U_naive of the paper instances).
+# results/bound_tightness/characteristic_times.json (T*, U and U_naive of the main paper instances and of random
+# instances).
 
 OUT_DIR = "results/bound_tightness/"
-PAPER_INSTANCES = [6, 7, 10, 11, 12, 21, 22, 32, 33, 34, 62, 63, 64, 92, 93, 94, 122, 123]
+MAIN_INSTANCES = {13: "Fig. 2a", 14: "Fig. 2b", 11: "Eq. (16)", 12: "Eq. (17)", 10: "Eq. (42)"}
+ALPHAS = [0.3, 1.0, 3.0]  # concentration of the Dirichlet distribution of the rows of A
 HARD_EPS = [0.3, 0.1, 0.03, 0.01, 0.003, 0.001]
 PROP5_EPS = [1e-2, 1e-4, 1e-6, 1e-9, 1e-12]
+
+
+def random_instance(rng, n_max=5, k_max=5, alpha=None):
+    n, k = rng.integers(2, n_max + 1), rng.integers(2, k_max + 1)
+    alpha = rng.choice(ALPHAS) if alpha is None else alpha
+    A = np.maximum(rng.dirichlet(alpha * np.ones(k), size=n), 1e-6)
+    return float(alpha), rng.uniform(0, 1, k), A / A.sum(axis=1, keepdims=True)
 
 
 def make_cases(n_random, n_families, seed=0):
@@ -27,17 +36,13 @@ def make_cases(n_random, n_families, seed=0):
     rng = np.random.default_rng(seed)
     cases = []
 
-    for index in PAPER_INSTANCES:
+    for index, name in MAIN_INSTANCES.items():
         n, k, _, mu, A = read_instance(index)
-        cases.append({'family': 'paper', 'instance': index, 'mu': mu, 'A': A, 'w': np.ones(n) / n})
+        cases.append({'family': 'paper', 'instance': index, 'name': name, 'mu': mu, 'A': A, 'w': np.ones(n) / n})
 
     for r in range(n_random):
-        n, k = rng.integers(2, 6), rng.integers(2, 6)
-        alpha = rng.choice([0.3, 1.0, 3.0])
-        A = np.maximum(rng.dirichlet(alpha * np.ones(k), size=n), 1e-6)
-        A = A / A.sum(axis=1, keepdims=True)
-        cases.append({'family': 'random', 'id': r, 'alpha': float(alpha), 'mu': rng.uniform(0, 1, k), 'A': A,
-                      'w': rng.dirichlet(np.ones(n))})
+        alpha, mu, A = random_instance(rng)
+        cases.append({'family': 'random', 'id': r, 'alpha': alpha, 'mu': mu, 'A': A, 'w': rng.dirichlet(np.ones(len(A)))})
 
     for f in range(n_families):
         # hard instances: A_i = (1 - eps) A_star + eps A0_i, harder as eps -> 0
@@ -87,29 +92,45 @@ def evaluate_case(case):
     return info
 
 
-def characteristic_times(index):
-    # T*^-1 = sup_w F(w) (plain solver, best of a few starts), U^-1 and U_naive^-1 (convex programs)
+def characteristic_times(case):
+    # T*^-1 = sup_w F(w) (best of a few starts), U^-1 and U_naive^-1 (convex programs)
     warnings.filterwarnings("ignore")
     np.random.seed(0)
-    n, k, _, mu, A = read_instance(index)
+    mu, A = np.array(case['mu']), np.array(case['A'])
+    n, k = A.shape
     st = time.time()
     U_inv, w_U = optimal_w(mu, A, bound="L")
     U_naive_inv, w_U_naive = optimal_w(mu, A, bound="naive")
+    inner = "exact_k2" if k == 2 else "plain"
     best, w_best = -np.inf, None
-    for w0 in [np.ones(n) / n, w_U, None, None]:
-        value, w = optimize(mu, A, w0=w0, inner_alg="reference")
+    for w0 in [np.ones(n) / n, (w_U + 1 / n) / 2, (w_U_naive + 1 / n) / 2]:
+        value, w = optimize(mu, A, w0=w0, inner_alg=inner)
         if value > best:
             best, w_best = value, w
-    return {'instance': index, 'n': n, 'k': k, 'T_star': 1 / best, 'U': 1 / U_inv, 'U_naive': 1 / U_naive_inv,
+    return {**case, 'n': n, 'k': k, 'T_star': 1 / best, 'U': 1 / U_inv, 'U_naive': 1 / U_naive_inv,
             'w_star': w_best.tolist(), 'w_U': w_U.tolist(), 'w_U_naive': w_U_naive.tolist(), 'time': time.time() - st}
+
+
+def time_cases(n_per_alpha, seed=1):
+    rng = np.random.default_rng(seed)
+    cases = []
+    for index, name in MAIN_INSTANCES.items():
+        _, _, _, mu, A = read_instance(index)
+        cases.append({'family': 'paper', 'instance': index, 'name': name, 'mu': mu.tolist(), 'A': A.tolist()})
+    for alpha in ALPHAS:
+        for r in range(n_per_alpha):
+            _, mu, A = random_instance(rng, n_max=4, k_max=4, alpha=alpha)
+            cases.append({'family': 'random', 'id': r, 'alpha': alpha, 'mu': mu.tolist(), 'A': A.tolist()})
+    return cases
 
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument("--jobs", type=int, default=1)
-    parser.add_argument("--n_random", type=int, default=300)
+    parser.add_argument("--n_random", type=int, default=600)
     parser.add_argument("--n_families", type=int, default=12)
-    parser.add_argument("--skip_times", action="store_true", help="do not compute T* and U of the paper instances")
+    parser.add_argument("--n_times", type=int, default=30, help="random instances per alpha for T* and U")
+    parser.add_argument("--skip_times", action="store_true", help="do not compute T* and U")
     args = parser.parse_args()
 
     cases = make_cases(args.n_random, args.n_families)
@@ -128,6 +149,6 @@ if __name__ == "__main__":
     if not args.skip_times:
         st = time.time()
         with Pool(args.jobs) as pool:
-            times = pool.map(characteristic_times, PAPER_INSTANCES, chunksize=1)
+            times = pool.map(characteristic_times, time_cases(args.n_times), chunksize=1)
         save_json(OUT_DIR + "characteristic_times.json", times)
         print(f"characteristic times in {time.time() - st:.0f}s")

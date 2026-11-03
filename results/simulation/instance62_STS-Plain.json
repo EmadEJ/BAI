@@ -1,0 +1,34 @@
+{
+ "instance": 62,
+ "algorithm": "STS-Plain",
+ "confidence": 0.001,
+ "mode": {
+  "fast": true
+ },
+ "runs": [
+  {
+   "seed": 0,
+   "T": 10389,
+   "best_arm": 0,
+   "correct": true,
+   "stopped": true,
+   "time": 2.6485087871551514,
+   "time_sampling": 2.525336742401123,
+   "time_stopping": 0.09497547149658203,
+   "n_optimizations": 241,
+   "n_failed_optimizations": 0
+  },
+  {
+   "seed": 1,
+   "T": 16860,
+   "best_arm": 0,
+   "correct": true,
+   "stopped": true,
+   "time": 2.7729551792144775,
+   "time_sampling": 2.598249912261963,
+   "time_stopping": 0.13108491897583008,
+   "n_optimizations": 253,
+   "n_failed_optimizations": 0
+  }
+ ]
+}

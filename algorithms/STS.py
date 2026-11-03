@@ -7,6 +7,7 @@ import itertools
 # general Separator Track and Stop (GTS-Unknown)
 # glr="lb":    stops on min_i L_i(t) > beta(t, delta) and tracks the maximizer of the lower bound (convex)
 # glr="plain": a local solver of the non-convex GLR for both, which only gives an upper bound of the GLR
+#              (for k = 2 the GLR has a closed form, which gives the same value as the solver much faster)
 class STS(TS):
     def __init__(self, n, k, confidence, tracking, mode = {'average_w': False, 'fast': True}, glr="lb"):
         super().__init__(n, k, confidence, tracking, mode)
@@ -17,6 +18,7 @@ class STS(TS):
         self.sum_of_rewards = np.zeros(k)
 
         self.glr = glr
+        self.glr_alg = "exact_k2" if k == 2 else "plain"
         self.last_lambda = 0  # the plain GLR is only recomputed every T/100 rounds
         self.last_check = 0
 
@@ -62,7 +64,7 @@ class STS(TS):
         A_hat = self.get_A_hat()
         if self.glr == "lb":
             return np.min(L_bound(mu_hat, A_hat, self.N_A, self.N_Z))
-        return optimize_GLR(mu_hat, A_hat, self.N_A, self.N_Z, alg="plain")[0]
+        return optimize_GLR(mu_hat, A_hat, self.N_A, self.N_Z, alg=self.glr_alg)[0]
 
     def beta_t_mu(self, delta):
         return (
@@ -117,7 +119,7 @@ class STS(TS):
             # warm start, mixed with the uniform allocation: in the softmax parametrization a weight close to 0 has
             # a vanishing gradient, so starting from a corner of the simplex would keep the solver stuck there
             w0 = np.ones(self.n) / self.n if self.last_w is None else (self.last_w + 1 / self.n) / 2
-            _, w_star = optimize(mu_hat, A_hat, w0=w0)
+            _, w_star = optimize(mu_hat, A_hat, w0=w0, inner_alg=self.glr_alg)
         self.last_w = w_star
 
         return w_star

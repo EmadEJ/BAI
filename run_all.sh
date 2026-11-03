@@ -27,8 +27,8 @@ TARGETS="$*"
 if wants light; then
     # a few minutes each, also fine on a laptop
     $PYTHON -u bound_tightness.py --jobs $JOBS > logs/bound_tightness.log 2>&1
-    $PYTHON -u glr_trace.py --instance_index 7 --log_period 10 --jobs $JOBS > logs/glr_trace_7.log 2>&1
-    $PYTHON -u glr_trace.py --instance_index 10 --log_period 50 --jobs $JOBS > logs/glr_trace_10.log 2>&1
+    $PYTHON -u glr_trace.py --instance_index 13 --log_period 20 --jobs $JOBS > logs/glr_trace_13.log 2>&1
+    $PYTHON -u glr_trace.py --instance_index 14 --log_period 50 --jobs $JOBS > logs/glr_trace_14.log 2>&1
     $PYTHON -u heatmaps.py --instance_index 10 --div 61 --jobs $JOBS > logs/heatmaps_10.log 2>&1
 fi
 if wants fig3; then
@@ -38,7 +38,7 @@ if wants delta; then
     run_simulations "21 22" 200 "--delta 0.1 --out_dir results/delta_correctness/" delta
 fi
 if wants fig5; then
-    run_simulations "32 33 34 62 63 64 92 93 94 122 123" 20 "" fig5
+    run_simulations "32 33 34 62 63 64 92 93 94 122 123 124" 20 "" fig5
 fi
 $PYTHON plot.py all > logs/plot.log 2>&1
 echo "$(date '+%F %T') done"

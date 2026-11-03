@@ -136,22 +136,27 @@ def optimal_w(mu, A, bound="L", sigma=SIGMA):
 
     w = cp.Variable(n, nonneg=True)
     q = A.T @ w
+    deltas = np.maximum((A[i_star] - A) @ mu, 1e-9)
+    scale = np.min(np.delete(deltas, i_star))**2  # keeps the objective of order 1 when two arms are almost tied
     inv_L = []
     for i in range(n):
         if i == i_star:
             continue
         D = A[i] - A[i_star]
-        delta = max(-D @ mu, 1e-9)
+        delta = deltas[i]
         reward_term = sigma**2 * cp.sum(cp.multiply(D**2, cp.inv_pos(q)))
         if bound == "L":
             H = variance(A[i], mu) * cp.inv_pos(w[i]) + variance(A[i_star], mu) * cp.inv_pos(w[i_star]) + reward_term
             denom = 2 * H + 2 * c_sigma(sigma) * delta * cp.inv_pos(cp.minimum(w[i], w[i_star]))
         else:
             denom = 2 * (cp.inv_pos(w[i]) / 4 + cp.inv_pos(w[i_star]) / 4 + reward_term)
-        inv_L.append(denom / delta**2)
+        inv_L.append(denom * (scale / delta**2))
 
     problem = cp.Problem(cp.Minimize(cp.max(cp.hstack(inv_L))), [cp.sum(w) == 1])
-    problem.solve()
+    try:
+        problem.solve()
+    except cp.error.SolverError:
+        problem.solve(solver=cp.SCS)
 
     w_star = np.clip(w.value, 0, None)
-    return 1 / problem.value, w_star / np.sum(w_star)
+    return scale / problem.value, w_star / np.sum(w_star)

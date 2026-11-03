@@ -16,9 +16,10 @@ from environment import ALGORITHMS
 # The figures go to figures/ (pdf + png), the tables to figures/tables.md and figures/*.tex
 
 FIG_DIR = "figures/"
-FIG2_INSTANCES = [7, 10]
+FIG2_INSTANCES = [13, 14]
 FIG3_INSTANCES = {11: "Instance (16)", 12: "Instance (17)"}
-FIG5_INSTANCES = [32, 33, 34, 62, 63, 64, 92, 93, 94, 122, 123]
+FIG5_N, FIG5_K = [3, 6, 9, 12], [2, 3, 4]  # instance index is 10 n + k
+FIG5_INSTANCES = [10 * n + k for n in FIG5_N for k in FIG5_K]
 DELTA_DIR = "results/delta_correctness/"
 
 ORDER = ["ASTS", "MuSTS", "STS-LB", "STS-Plain", "SGTS"]
@@ -82,38 +83,52 @@ def load_runs(index, algorithm, out_dir="results/simulation/"):
 ############################## figure 2
 
 def fig2():
-    fig, axes = plt.subplots(1, len(FIG2_INSTANCES), figsize=(DOUBLE, 2.5))
-    for ax, index in zip(axes, FIG2_INSTANCES):
+    # top: the whole run on a log scale with the proven zone of L, bottom: zoom on the stopping times
+    fig, axes = plt.subplots(2, len(FIG2_INSTANCES), figsize=(DOUBLE, 4.6), gridspec_kw={"height_ratios": [1.1, 1]})
+    statistics = [("reference", "k"), ("L", C_L), ("L_naive", C_NAIVE)]
+    for c, index in enumerate(FIG2_INSTANCES):
         d = load_json(f"results/glr_trace/instance{index}.json")
         if d is None:
             continue
         tr = {key: np.array(value, dtype=float) for key, value in d['trace'].items()}
         T, L, upper = tr['T'], tr['L'], tr['L_upper']
         upper[~np.isfinite(upper)] = np.nan
+        # first round where each statistic is above each threshold
+        crossing = {}
+        for key, _ in statistics:
+            for beta in ["beta", "naive_beta"]:
+                above = np.nonzero(tr[key] > tr[beta])[0]
+                crossing[key, beta] = above[0] if len(above) else None
 
-        ax.fill_between(T, L, upper, color=C_L, alpha=0.13, lw=0)
-        ax.plot(T, upper, color=C_L, lw=0.6, alpha=0.5)
-        ax.plot(T, tr['plain'], color=C_PLAIN, lw=2.6, alpha=0.9)
-        ax.plot(T, tr['reference'], color="k", ls=(0, (1.2, 1.2)), lw=1.3)
-        ax.plot(T, L, color=C_L)
-        ax.plot(T, tr['L_naive'], color=C_NAIVE)
-        ax.plot(T, tr['beta'], color=C_BETA, lw=1.2)
-        ax.plot(T, tr['naive_beta'], color=C_BETA, lw=1.2, ls="--")
+        for r, ax in enumerate(axes[:, c]):
+            ax.fill_between(T, L, upper, color=C_L, alpha=0.13, lw=0)
+            ax.plot(T, upper, color=C_L, lw=0.6, alpha=0.5)
+            ax.plot(T, tr['plain'], color=C_PLAIN, lw=2.6, alpha=0.9)
+            ax.plot(T, tr['reference'], color="k", ls=(0, (1.2, 1.2)), lw=1.3)
+            ax.plot(T, L, color=C_L)
+            ax.plot(T, tr['L_naive'], color=C_NAIVE)
+            ax.plot(T, tr['beta'], color=C_BETA, lw=1.2)
+            ax.plot(T, tr['naive_beta'], color=C_BETA, lw=1.2, ls="--")
+            for key, color in statistics:
+                for beta, face in [("beta", color), ("naive_beta", "white")]:
+                    j = crossing[key, beta]
+                    if j is not None:
+                        ax.plot(T[j], tr[beta][j], marker="o", ms=4.5, mfc=face, mec=color, mew=1.1, zorder=5)
+                        if beta == "beta":
+                            ax.axvline(T[j], color=color, lw=0.6, ls=":", alpha=0.8)
+            ax.set_xlim(0, T[-1])
 
-        # first time each statistic crosses our threshold
-        for key, color in [("reference", "k"), ("L", C_L), ("L_naive", C_NAIVE)]:
-            crossed = np.nonzero(tr[key] > tr['beta'])[0]
-            if len(crossed):
-                j = crossed[0]
-                ax.plot(T[j], tr['beta'][j], marker="o", ms=4, color=color, zorder=5, mec="white", mew=0.6)
-                ax.axvline(T[j], color=color, lw=0.6, ls=":", alpha=0.8)
-
-        ax.set_yscale("log")
-        ax.set_ylim(max(np.nanmin(L[L > 0]), 0.3), 2 * np.nanmax(upper))
-        ax.set_xlim(0, T[-1])
-        ax.set_xlabel("Timestep $t$")
-        ax.set_title(f"$n={d['n']},\\ k={d['k']},\\ \\delta=10^{{{int(np.log10(d['confidence']))}}}$")
-    axes[0].set_ylabel("statistic")
+        top, bottom = axes[0, c], axes[1, c]
+        top.set_yscale("log")
+        top.set_ylim(max(np.nanmin(L[L > 0]), 0.3), 2 * np.nanmax(upper))
+        top.set_title(f"$n={d['n']},\\ k={d['k']},\\ \\delta=10^{{{int(np.log10(d['confidence']))}}}$")
+        first = min(j for j in crossing.values() if j is not None)
+        bottom.set_xlim(0.6 * T[first], T[-1])
+        window = T >= 0.6 * T[first]
+        bottom.set_ylim(0.6 * tr['beta'][window].min(), 1.3 * tr['naive_beta'][window].max())
+        bottom.set_xlabel("Timestep $t$")
+    axes[0, 0].set_ylabel("statistic (log scale)")
+    axes[1, 0].set_ylabel("statistic, near stopping")
 
     handles = [
         Line2D([], [], color=C_PLAIN, lw=2.6, label="GLR, plain solver"),
@@ -123,9 +138,11 @@ def fig2():
         Line2D([], [], color=C_NAIVE, label=r"$L_{\mathrm{naive}}$"),
         Line2D([], [], color=C_BETA, lw=1.2, label=r"our $\beta$"),
         Line2D([], [], color=C_BETA, lw=1.2, ls="--", label=r"naive $\beta$"),
+        Line2D([], [], marker="o", ls="", mfc="0.4", mec="0.4", ms=4.5, label=r"stops with our $\beta$"),
+        Line2D([], [], marker="o", ls="", mfc="white", mec="0.4", mew=1.1, ms=4.5, label=r"stops with naive $\beta$"),
     ]
     fig.tight_layout(rect=(0, 0.07, 1, 1))
-    fig.legend(handles=handles, loc="lower center", ncol=7, bbox_to_anchor=(0.5, -0.01), handlelength=1.6, columnspacing=1.0)
+    fig.legend(handles=handles, loc="lower center", ncol=5, bbox_to_anchor=(0.5, -0.005), handlelength=1.6, columnspacing=1.0)
     save(fig, "fig2_glr_trace")
 
 
@@ -185,17 +202,17 @@ def fig3():
 
 
 def fig5():
-    fig, axes = plt.subplots(3, 4, figsize=(DOUBLE, 5.2))
-    for ax, index in zip(axes.flat, FIG5_INSTANCES):
-        n, k, _, _, _ = read_instance(index)
-        sample_complexity_panel(ax, index, show_labels=False)
-        ax.set_title(f"$n={n},\\ k={k}$")
+    # one row per n and one column per k
+    fig, axes = plt.subplots(len(FIG5_N), len(FIG5_K), figsize=(DOUBLE, 7.2))
+    for r, n in enumerate(FIG5_N):
+        for c, k in enumerate(FIG5_K):
+            ax = axes[r, c]
+            sample_complexity_panel(ax, 10 * n + k, show_labels=False)
+            ax.set_title(f"$n={n},\\ k={k}$")
     for ax in axes[:, 0]:
         ax.set_ylabel("Sample complexity")
-    legend_ax = axes.flat[len(FIG5_INSTANCES)]
-    legend_ax.axis("off")
-    algorithm_legend(fig, legend_ax)
-    fig.tight_layout()
+    fig.tight_layout(rect=(0, 0.035, 1, 1))
+    algorithm_legend(fig)
     save(fig, "fig5_sample_complexity")
 
 
@@ -280,20 +297,30 @@ def fig_tightness():
     ax.set_title("(a) hard families, median and IQR")
     ax.legend(loc="center right", fontsize=7.5)
 
-    # (b) every pair: ratio against the hardness gamma_bar = Delta_i / min(V_i, V_star)
+    # (b) random instances: ratio against the hardness 1 / Lambda_i (w sums to 1, so it is the number of samples per
+    # unit of evidence for this pair), binned
     ax = axes[1]
-    pairs = [row for row in rows if row['family'] in ('random', 'hard', 'paper')]
-    g = np.array([row['gamma_bar'] for row in pairs])
-    for key, label, color in [("L_naive", r"$L_{\mathrm{naive}}$", C_NAIVE), ("L", "$L$ (ours)", C_L)]:
-        ratio = np.array([row['Lambda'] / row[key] for row in pairs])
-        ax.scatter(g, ratio, s=5, color=color, alpha=0.5, lw=0, label=label)
+    pairs = [row for row in rows if row['family'] == 'random']
+    g = np.array([1 / row['Lambda'] for row in pairs])
+    edges = np.logspace(np.log10(g.min()), np.log10(g.max()), 12)
+    centers = np.sqrt(edges[:-1] * edges[1:])
+    for key, label, color, ls, marker in curves:
+        ratio = np.array([(row['factor'] if key == 'factor' else row['Lambda'] / row[key]) for row in pairs])
+        if key != "factor":
+            ax.scatter(g, ratio, s=3, color=color, alpha=0.18, lw=0, rasterized=True)
+        stats = [(c, np.median(ratio[m]), np.quantile(ratio[m], 0.25), np.quantile(ratio[m], 0.75))
+                 for c, m in ((c, (g >= lo) & (g < hi)) for c, lo, hi in zip(centers, edges[:-1], edges[1:])) if m.sum() >= 15]
+        c, med, lo, hi = map(np.array, zip(*stats))
+        ax.plot(c, med, color=color, ls=ls, marker=marker, ms=3.5, label=label)
+        if key != "factor":
+            ax.fill_between(c, lo, hi, color=color, alpha=0.15, lw=0)
     ax.axhline(1, color="k", lw=0.6)
     ax.set_xscale("log")
     ax.set_yscale("log")
-    ax.set_xlabel(r"$\bar\gamma_i = \Delta_i / \min(V_i, V_*)$ (smaller is harder)")
-    ax.set_ylabel(r"$\Lambda_i$ / bound")
-    ax.set_title("(b) random, hard and paper instances")
-    ax.legend(loc="upper left", markerscale=2.5, fontsize=7.5)
+    ax.set_ylim(0.8, 300)
+    ax.set_xlabel(r"hardness $1 / \Lambda_i(w, A^\top w)$, with $\sum_i w_i = 1$")
+    ax.set_ylabel("ratio to the true GLR")
+    ax.set_title(f"(b) random instances ({len(pairs)} pairs), binned median and IQR")
     fig.tight_layout()
     save(fig, "fig_bound_tightness")
 
@@ -312,14 +339,16 @@ def tightness_table():
     lines = []
     for r in results:
         if r['family'] == 'paper':
-            n, k = r['n'], r['k']
-            lines.append((f"instance {r['instance']} ($n={n}, k={k}$)", *instance_ratios(r)))
+            lines.append((f"{r['name']} ($n={r['n']}, k={r['k']}$)", *instance_ratios(r)))
     fmt = lambda v: f"{np.median(v):.2f} ({np.quantile(v, 0.9):.1f})"
     random_rows = [row for row in rows if row['family'] == 'random']
-    lines.append((f"random, {len(random_rows)} pairs: median (90\\%)",
-                  fmt([row['Lambda'] / row['L_naive'] for row in random_rows]),
-                  fmt([row['Lambda'] / row['L'] for row in random_rows]),
-                  fmt([row['factor'] for row in random_rows])))
+    for alpha in sorted({row['alpha'] for row in random_rows}) + [None]:
+        family = [row for row in random_rows if alpha is None or row['alpha'] == alpha]
+        name = "random, all" if alpha is None else f"random, $\\alpha={alpha:g}$"
+        lines.append((f"{name} ({len(family)} pairs): median (90\\%)",
+                      fmt([row['Lambda'] / row['L_naive'] for row in family]),
+                      fmt([row['Lambda'] / row['L'] for row in family]),
+                      fmt([row['factor'] for row in family])))
     for eps in sorted({row['eps'] for row in rows if row['family'] == 'hard'}, reverse=True):
         hard = [row for row in rows if row['family'] == 'hard' and row['eps'] == eps]
         lines.append((f"hard, $\\epsilon={eps:g}$: median", np.median([row['Lambda'] / row['L_naive'] for row in hard]),
@@ -346,11 +375,17 @@ def tightness_table():
 
     times = load_json("results/bound_tightness/characteristic_times.json")
     if times is not None:
-        md += ["", "| instance | n | k | T* | U/T* | U_naive/T* |", "|---|---|---|---|---|---|"]
-        tex = ["\\begin{tabular}{lcccc}", "\\toprule", "instance & $(n, k)$ & $T^*$ & $U/T^*$ & $U_{\\mathrm{naive}}/T^*$ \\\\", "\\midrule"]
-        for t in times:
-            md.append(f"| {t['instance']} | {t['n']} | {t['k']} | {t['T_star']:.1f} | {t['U'] / t['T_star']:.2f} | {t['U_naive'] / t['T_star']:.2f} |")
-            tex.append(f"{t['instance']} & $({t['n']}, {t['k']})$ & {t['T_star']:.1f} & {t['U'] / t['T_star']:.2f} & {t['U_naive'] / t['T_star']:.2f} \\\\")
+        md += ["", "| instances | U/T* | U_naive/T* |", "|---|---|---|"]
+        tex = ["\\begin{tabular}{lcc}", "\\toprule", "instances & $U/T^*$ & $U_{\\mathrm{naive}}/T^*$ \\\\", "\\midrule"]
+        table = [(f"{t['name']} ($n={t['n']}, k={t['k']}$)", f"{t['U'] / t['T_star']:.2f}", f"{t['U_naive'] / t['T_star']:.2f}")
+                 for t in times if t['family'] == 'paper']
+        for alpha in sorted({t['alpha'] for t in times if t['family'] == 'random'}):
+            family = [t for t in times if t['family'] == 'random' and t['alpha'] == alpha]
+            table.append((f"random, $\\alpha={alpha:g}$ ({len(family)} instances): median (90\\%)",
+                          fmt([t['U'] / t['T_star'] for t in family]), fmt([t['U_naive'] / t['T_star'] for t in family])))
+        for line in table:
+            md.append("| " + " | ".join(v.replace("$", "").replace("\\", "") for v in line) + " |")
+            tex.append(" & ".join(line) + " \\\\")
         tex += ["\\bottomrule", "\\end{tabular}"]
         with open(FIG_DIR + "table_characteristic_times.tex", "w") as f:
             f.write("\n".join(tex) + "\n")

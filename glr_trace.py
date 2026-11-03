@@ -14,10 +14,12 @@ from optimization import optimize_GLR
 from lowerbound import L_bound, L_naive, proven_factor
 
 # Figure 2: the statistics along one run of GTS-Unknown (LB) on an instance
-#   python glr_trace.py --instance_index 7 --log_period 10 --jobs 8
-# The run is logged every log_period rounds, then at every logged round we compute the plain solver GLR,
-# the reference (true) GLR, L, L_naive, the proven upper zone of L and both thresholds.
-# Writes results/glr_trace/instance7.json
+#   python glr_trace.py --instance_index 13 --log_period 20 --jobs 8
+# The sampling rule of GTS-Unknown (LB) keeps running after its stopping time, until L and L_naive have also crossed
+# the naive threshold (plus a margin), so that every stopping time is on the plot. The run is logged every log_period
+# rounds, then at every logged round we compute the plain solver GLR, the reference (true) GLR, L, L_naive, the proven
+# upper zone of L and both thresholds.
+# Writes results/glr_trace/instance13.json
 
 OUT_DIR = "results/glr_trace/"
 
@@ -51,6 +53,8 @@ if __name__ == "__main__":
     parser.add_argument("--seed", type=int, default=0)
     parser.add_argument("--delta", type=float, default=None)
     parser.add_argument("--jobs", type=int, default=1)
+    parser.add_argument("--margin", type=float, default=0.15, help="fraction of rounds run after the last crossing")
+    parser.add_argument("--max_T", type=int, default=10**6)
     args = parser.parse_args()
 
     n, k, confidence, mus, A = read_instance(args.instance_index)
@@ -59,11 +63,23 @@ if __name__ == "__main__":
 
     st = time.time()
     env = Environment(mus, A, n, k, seed=args.seed)
-    run = env.run(confidence, "STS-LB", log_period=args.log_period)
-    print(f"run stopped at T={run['T']} in {run['time']:.1f}s, logged {len(run['states'])} rounds")
+    alg = env.make_algorithm("STS-LB", confidence, "G", {'fast': True})
+    states, T_end = [], args.max_T
+    while env.T < T_end:
+        action, init = alg.get_action()
+        post_action, reward = env.take_action(action)
+        alg.update(action, post_action, reward)
+        if init or env.T % args.log_period != 0:
+            continue
+        states.append(alg.state())
+        mu_hat, A_hat = alg.get_mu_hat(), alg.get_A_hat()
+        lower = min(np.min(L_bound(mu_hat, A_hat, alg.N_A, alg.N_Z)), np.min(L_naive(mu_hat, A_hat, alg.N_A, alg.N_Z)))
+        if T_end == args.max_T and lower > alg.naive_beta_t(confidence):
+            T_end = int(env.T * (1 + args.margin))
+    print(f"run until T={env.T} in {time.time() - st:.1f}s, logged {len(states)} rounds")
 
     with Pool(args.jobs) as pool:
-        stats = pool.map(statistics, [(n, k, confidence, state) for state in run['states']], chunksize=4)
+        stats = pool.map(statistics, [(n, k, confidence, state) for state in states], chunksize=4)
     print(f"statistics computed in {time.time() - st:.0f}s")
 
     trace = {key: [s[key] for s in stats] for key in stats[0]}
@@ -73,12 +89,11 @@ if __name__ == "__main__":
         'confidence': confidence,
         'seed': args.seed,
         'log_period': args.log_period,
-        'T_stop': run['T'],
-        'correct': run['correct'],
         'trace': trace,
     }
     save_json(OUT_DIR + f"instance{args.instance_index}.json", result)
 
     for key in ['plain', 'reference', 'L', 'L_naive']:
-        crossed = [t for t, value, beta in zip(trace['T'], trace[key], trace['beta']) if value > beta]
-        print(f"{key} crosses our beta at T={crossed[0] if crossed else None}")
+        for beta in ['beta', 'naive_beta']:
+            crossed = [t for t, value, b in zip(trace['T'], trace[key], trace[beta]) if value > b]
+            print(f"{key} crosses {beta} at T={crossed[0] if crossed else None}")
