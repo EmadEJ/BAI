@@ -5,7 +5,7 @@ import itertools
 
 # Sub-Gaussian Seperator Track and Stop
 class SGTS(TS):
-    def __init__(self, n, k, confidence, tracking, mode = {'average_w': False, 'fast': False}):
+    def __init__(self, n, k, confidence, tracking, mode = {'average_w': False, 'fast': True}):
         # Note that k is not used throughout the algorithm because we are blind to post-actions
         super().__init__(n, k, confidence, tracking, mode)
         
@@ -13,8 +13,6 @@ class SGTS(TS):
         self.sum_of_rewards = np.zeros(n)
         
         self.var = 5/4  # sub-Gaussian parameter
-        
-        self.last_w = None
 
     def get_means_hat(self):
         return self.sum_of_rewards / self.N_A
@@ -50,10 +48,11 @@ class SGTS(TS):
         return lambda_star
 
     def beta_t(self, delta):
-        return self.n * Cg(
-            (2/self.n) * np.log(1/delta) +
-            4 * np.log(np.log(np.e * self.T / self.n)) +
-            2 * np.log(np.e * np.pi**2 / 6)
+        # Lemma 3.2 of [TD25a], eq. (41) of the paper
+        return (self.n / 2) * W_bar(
+            2 * np.log(np.e * np.pi**2 / 6) +
+            (2/self.n) * sum([2 * np.log(1 + np.log(self.N_A[i])) for i in range(self.n)]) +
+            (2/self.n) * np.log(1/delta)
         )
 
     def stopping_rule(self):
@@ -63,15 +62,9 @@ class SGTS(TS):
         return lambda_hat_t > beta_t, lambda_hat_t, beta_t
 
     def optimal_w(self):
-        if self.mode['fast'] and self.last_w is not None:
-            if self.T > 1000 and self.T % 10 != 0:
-                return self.last_w
-            if self.T > 10000 and self.T % 100 != 0:
-                return self.last_w
-            if self.T > 100000 and self.T % 1000 != 0:
-                return self.last_w
-            if self.T > 1000000 and self.T % 10000 != 0:
-                return self.last_w
+        if self.skip_optimization():
+            return self.last_w
+        self.n_optimizations += 1
         
         i_star, _, delta_hat = self.best_empirical_arm()
 
@@ -104,24 +97,23 @@ class SGTS(TS):
 
         return np.ones(self.n) / self.n
 
-    def plot_w(self, mu, A, div=101, ax=None):
-        if self.n != 3:
-            print("plotting only available for n=3")
-            return
+    def F_on_simplex(self, mu, A, div=101):
+        # F(w) of the sub-Gaussian bandit that ignores the contexts, on a grid of the simplex (n = 3)
         grid_range = np.linspace(0, 1, div)
         grid = itertools.product(grid_range, repeat=self.n-1)
         Ts = {}
         for w in grid:
             w0 = 1 - sum(w)
-            if w0 < 0:
+            if w0 < -1e-9:
                 continue
-            w = np.array(([w0] + list(w)))
+            w = np.array(([max(w0, 0)] + list(w)))
             
-            obj = self.lambda_hat(w, means=np.dot(A, mu))
+            with np.errstate(divide='ignore'):
+                obj = self.lambda_hat(w, means=np.dot(A, mu))
             
             Ts[tuple(w)] = obj
         
-        return draw_simplex_heatmap(Ts, ax)
+        return Ts
 
     def get_action(self):
         # Initialization phase

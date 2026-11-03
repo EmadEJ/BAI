@@ -1,12 +1,9 @@
-from pathlib import Path
 from tqdm import tqdm
-import time
 import itertools
 import numpy as np
 import cvxpy as cp
-from scipy.optimize import minimize, Bounds, LinearConstraint
-from scipy.special import softmax
-import plotly.express as px
+from scipy.optimize import minimize
+from scipy.special import softmax, log_softmax
 
 from utils import *
 from io_utils import *
@@ -16,55 +13,66 @@ TESTSET_DIR = "testsets/"
 
 TOL = 1e-4  # used for checking whether the optimization was good enough
 
+SIGMA = 1.0  # unit-variance Gaussian rewards
+
 
 ############################## helper functions
 
 def best_arm(mu, A):
     means = np.dot(A, mu)
-    best_arm = np.argmax(means)  
+    best_arm = np.argmax(means)
     return best_arm, means[best_arm]
 
 
 def objective(mu, A, mu_p, A_p, N_A, N_Z):
     n, k = A.shape
-    
+
     result = 0
     for i in range(n):
         result += N_A[i] * categorical_kl(A[i], A_p[i])
     for j in range(k):
         result += N_Z[j] * gaussian_kl(mu[j], mu_p[j])
-    
+
     return result
 
 
-def optimal_mu(mu, A, w, A_p, s, slack=0):
-    n, k = A.shape
-    i_star, _ = best_arm(mu, A)
-    
-    mu_p = cp.Variable(k)
-    
-    constraint = [(A_p[s] - A_p[i_star]) @ mu_p >= 0 - slack]
-    
-    objective = 0.5 * cp.sum(cp.multiply(np.dot(w, A), cp.square(mu - mu_p)))
-    
-    problem = cp.Problem(cp.Minimize(objective), constraint)
-    
-    try:
-        problem.solve()
-        if problem.status in [cp.OPTIMAL, cp.OPTIMAL_INACCURATE]:
-            return mu_p.value
-        else:
-            print(f"non optimal value at mu {problem.status}")
-            return mu_p.value
-    except Exception as e:
-        print(f"failed optimization at mu: {e}")
-        return None
-    
+def optimal_mu(mu, N_Z, d):
+    # min_{lambda in [0,1]^k} sum_j N_Z[j] (mu_j - lambda_j)^2 / 2 s.t. d^T lambda >= 0, returns (cost, lambda, nu)
+    # KKT: lambda(nu) = clip(mu + nu * d / N_Z, 0, 1) and d^T lambda(nu) is nondecreasing in nu.
+    # nu is the multiplier of d^T lambda >= 0, so the gradient of the cost w.r.t. d is -nu * lambda.
+    cost = lambda lam: np.sum(N_Z * np.square(mu - lam)) / (2 * SIGMA**2)
+
+    lam = np.clip(mu, 0, 1)
+    if d @ lam >= 0:
+        return cost(lam), lam, 0.0
+
+    c = SIGMA**2 * d / N_Z
+    # the closed form of the problem without the box constraint, usually already inside the box
+    nu = -(d @ mu) / (d @ c)
+    lam = mu + nu * c
+    if np.all(lam >= 0) and np.all(lam <= 1):
+        return cost(lam), lam, nu
+
+    # otherwise find the root of nu -> d^T lambda(nu) between two of its breakpoints
+    nz = c != 0
+    breakpoints = np.concatenate(((0 - mu[nz]) / c[nz], (1 - mu[nz]) / c[nz]))
+    breakpoints = np.sort(breakpoints[breakpoints > 0])
+    g = lambda nu: d @ np.clip(mu + nu * c, 0, 1)
+    values = np.array([g(nu) for nu in breakpoints])
+    idx = np.argmax(values >= 0)
+    lo = breakpoints[idx - 1] if idx > 0 else 0.0
+    hi = breakpoints[idx]
+    g_lo, g_hi = g(lo), values[idx]
+    nu = lo + (hi - lo) * (0 - g_lo) / (g_hi - g_lo) if g_hi > g_lo else hi
+    lam = np.clip(mu + nu * c, 0, 1)
+    return cost(lam), lam, nu
+
 
 def optimal_A(mu, A, w, mu_p, s, solver=None, slack=0):
+    # convex problem: best context distributions of i_star and s for fixed rewards mu_p
     n, k = A.shape
     i_star, _ = best_arm(mu, A)
-    
+
     A_pi = cp.Variable(k)
     A_ps = cp.Variable(k)
 
@@ -82,55 +90,151 @@ def optimal_A(mu, A, w, mu_p, s, solver=None, slack=0):
     )
 
     problem = cp.Problem(cp.Minimize(objective), constraints)
-    
+
     try:
         problem.solve(solver=solver)
         A_p = A.copy()
-        A_p[i_star] = A_pi.value
-        A_p[s] = A_ps.value
-        if problem.status in [cp.OPTIMAL, cp.OPTIMAL_INACCURATE]:
-            return A_p
-        else:
+        A_p[i_star] = np.clip(A_pi.value, 1e-12, None)
+        A_p[s] = np.clip(A_ps.value, 1e-12, None)
+        if problem.status not in [cp.OPTIMAL, cp.OPTIMAL_INACCURATE]:
             print(f"non optimal value at A {problem.status}")
-            return A_p
+        return A_p
     except Exception as e:
         print(f"failed optimization at A: {e}")
         return A
 
 
-def optimal_w(mu, A, mu_p, A_p, solver=None):
-    n, k = A.shape
-    
-    w = cp.Variable(n, nonneg=True)
-    coef = np.array([categorical_kl(A[i], A_p[i]) + 0.5*np.dot(A[i], np.square(mu - mu_p)) for i in range(n)])
-    constraints = [cp.sum(w) == 1]
-    
-    objective = cp.sum(cp.multiply(w, coef))
-    
-    problem = cp.Problem(cp.Maximize(objective), constraints)
-    
-    try:
-        problem.solve(solver=solver)
-        if problem.status in [cp.OPTIMAL, cp.OPTIMAL_INACCURATE]:
-            return w.value
-        else:
-            print("non optimal value at w")
-            return w.value
-    except:
-        print("failed optimization at w")
-        return None
-
-
 ############################## GLR Optimization
 
-def grid_search_GLR(mu, A, N_A, N_Z, div=21, div2=21, solver=cp.CLARABEL, verbose=True):
+def plain_GLR_pair(mu, A, N_A, N_Z, s, n_random=3, method="BFGS", rng=None):
+    # local solver over the context distributions (B_{i_star}, B_s) = softmax(x), the rewards are solved exactly
+    # by optimal_mu. Starts from B = A, from the best B for lambda = mu, and from n_random random points.
     n, k = A.shape
-    
     i_star, _ = best_arm(mu, A)
-    
+    rng = np.random if rng is None else rng
+    log_A_star, log_A_s = np.log(A[i_star]), np.log(A[s])
+    # the GLR is linear in (N_A, N_Z), so we solve with weights that sum to 1 and scale back
+    scale = np.sum(N_A)
+    N_A, N_Z = N_A / scale, N_Z / scale
+
+    def solved_mu_objective(x):
+        log_B_star, log_B_s = log_softmax(x[:k]), log_softmax(x[k:])
+        B_star, B_s = np.exp(log_B_star), np.exp(log_B_s)
+        reward_cost, lam, nu = optimal_mu(mu, N_Z, B_s - B_star)
+        result = N_A[i_star] * A[i_star] @ (log_A_star - log_B_star) + N_A[s] * A[s] @ (log_A_s - log_B_s) + reward_cost
+
+        # gradient through the softmax, the reward part comes from the envelope theorem
+        g = -nu * lam
+        grad_star = N_A[i_star] * (B_star - A[i_star]) - B_star * (g - B_star @ g)
+        grad_s = N_A[s] * (B_s - A[s]) + B_s * (g - B_s @ g)
+        return result, np.concatenate((grad_star, grad_s))
+
+    A0 = optimal_A(mu, A, N_A, np.clip(mu, 0, 1), s)
+    starts = [np.concatenate((log_A_star, log_A_s)), np.log(np.concatenate((A0[i_star], A0[s])))]
+    starts += [np.log(rng.dirichlet(np.ones(k), size=2)).ravel() for _ in range(n_random)]
+
+    best = None
+    for x0 in starts:
+        if method == "Nelder-Mead":
+            result = minimize(lambda x: solved_mu_objective(x)[0], x0=x0, method=method,
+                              options={"xatol": 1e-6, "fatol": 1e-9, "maxiter": 400 * k})
+        else:
+            result = minimize(solved_mu_objective, x0=x0, jac=True, method=method, options={"gtol": 1e-10})
+        if best is None or result.fun < best.fun:
+            best = result
+    if method != "Nelder-Mead":
+        # the objective has kinks (e.g. where B_star = B_s), a short gradient-free polish handles them
+        result = minimize(lambda x: solved_mu_objective(x)[0], x0=best.x, method="Nelder-Mead",
+                          options={"xatol": 1e-8, "fatol": 1e-12, "maxiter": 100 * k})
+        if result.fun < best.fun:
+            best = result
+
+    A_p = np.copy(A)
+    A_p[i_star] = softmax(best.x[:k])
+    A_p[s] = softmax(best.x[k:])
+    obj, mu_p, _ = optimal_mu(mu, N_Z, A_p[s] - A_p[i_star])
+    obj += N_A[i_star] * categorical_kl(A[i_star], A_p[i_star]) + N_A[s] * categorical_kl(A[s], A_p[s])
+    return obj * scale, mu_p, A_p
+
+
+def plain_GLR(mu, A, N_A, N_Z, n_random=3, verbose=False):
+    n, k = A.shape
+    i_star, _ = best_arm(mu, A)
+
+    obj_star, mu_star, A_star = np.inf, None, None
+    for s in range(n):
+        if s == i_star:
+            continue
+        obj, mu_p, A_p = plain_GLR_pair(mu, A, N_A, N_Z, s, n_random=n_random)
+        if obj < obj_star:
+            obj_star, mu_star, A_star = obj, mu_p, A_p
+    return obj_star, mu_star, A_star
+
+
+def exact_GLR_k2_pair(mu, A, N_A, N_Z, s):
+    # With 2 contexts (B_s - B_star)^T lambda = (b_s - b_star)(lambda_1 - lambda_2), so an alternative either flips
+    # the order of the rewards (keeping A) or the order of the context probabilities (keeping lambda = clip(mu)).
+    n, k = A.shape
+    assert k == 2
+    i_star, _ = best_arm(mu, A)
+    kl = lambda p, x: p * np.log(p / x) + (1 - p) * np.log((1 - p) / (1 - x))
+
+    # flip the rewards
+    obj, mu_p, _ = optimal_mu(mu, N_Z, A[s] - A[i_star])
+    A_p = A.copy()
+
+    # flip the context probabilities: both arms meet at the weighted average of their first context probability
+    lam0 = np.clip(mu, 0, 1)
+    base_cost = np.sum(N_Z * np.square(mu - lam0)) / (2 * SIGMA**2)
+    if lam0[0] == lam0[1]:
+        obj_c, x = base_cost, None
+    else:
+        x = (N_A[s] * A[s, 0] + N_A[i_star] * A[i_star, 0]) / (N_A[s] + N_A[i_star])
+        obj_c = N_A[s] * kl(A[s, 0], x) + N_A[i_star] * kl(A[i_star, 0], x) + base_cost
+    if obj_c < obj:
+        obj, mu_p = obj_c, lam0
+        if x is not None:
+            A_p[s] = A_p[i_star] = [x, 1 - x]
+    return obj, mu_p, A_p
+
+
+def exact_GLR_k2(mu, A, N_A, N_Z, verbose=False):
+    n, k = A.shape
+    i_star, _ = best_arm(mu, A)
+
+    obj_star, mu_star, A_star = np.inf, None, None
+    for s in range(n):
+        if s == i_star:
+            continue
+        obj, mu_p, A_p = exact_GLR_k2_pair(mu, A, N_A, N_Z, s)
+        if obj < obj_star:
+            obj_star, mu_star, A_star = obj, mu_p, A_p
+    return obj_star, mu_star, A_star
+
+
+def reference_GLR_pair(mu, A, N_A, N_Z, s, n_random=40):
+    # our best estimate of the true (non-convex) Lambda_s: exact for k = 2, many starting points otherwise
+    if A.shape[1] == 2:
+        return exact_GLR_k2_pair(mu, A, N_A, N_Z, s)
+    return plain_GLR_pair(mu, A, N_A, N_Z, s, n_random=n_random)
+
+
+def reference_GLR(mu, A, N_A, N_Z, n_random=40, verbose=False):
+    # our best estimate of the true (non-convex) GLR: exact for k = 2, many starting points otherwise
+    if A.shape[1] == 2:
+        return exact_GLR_k2(mu, A, N_A, N_Z)
+    return plain_GLR(mu, A, N_A, N_Z, n_random=n_random)
+
+
+def grid_search_GLR(mu, A, N_A, N_Z, div=21, div2=21, solver=cp.CLARABEL, verbose=True):
+    # slow, only used to validate the other methods
+    n, k = A.shape
+
+    i_star, _ = best_arm(mu, A)
+
     obj_star = np.inf
     mu_star, A_star = None, None
-    
+
     grid_range = np.linspace(0, 1, div)
     grid = itertools.product(grid_range, repeat=k)
     for mu_p in grid:
@@ -145,7 +249,7 @@ def grid_search_GLR(mu, A, N_A, N_Z, div=21, div2=21, solver=cp.CLARABEL, verbos
                 obj_star = obj
                 mu_star = mu_p
                 A_star = A_p
-    
+
     mu_p_base = mu_star.copy()
     gap = 1/(div-1)
     grid_range = np.linspace(-gap, gap, div2)
@@ -162,882 +266,154 @@ def grid_search_GLR(mu, A, N_A, N_Z, div=21, div2=21, solver=cp.CLARABEL, verbos
                 obj_star = obj
                 mu_star = mu_p
                 A_star = A_p
-    
-    return obj_star, mu_star, A_star
-
-
-def contribution_optimization_GLR(mu, A, N_A, N_Z, verbose=True):
-    n, k = A.shape
-    
-    means = np.dot(A, mu)
-    i_star = np.argmax(means)
-    
-    obj_star = np.inf
-    mu_star, A_star = None, None
-    for s in range(n):
-        if s == i_star:
-            continue
-        
-        delta_s = means[i_star] - means[s]
-        
-        objs_A = []
-        objs_mu = []
-        grid = np.linspace(0, 1, 101)
-        for A_contribution in grid:
-            mu_contribution = 1 - A_contribution
-            
-            # A first
-            A_p = optimal_A(mu, A, N_A, mu, s, slack=delta_s*mu_contribution)
-            mu_p = optimal_mu(mu, A, N_A, A_p, s)
-            obj = objective(mu, A, mu_p, A_p, N_A, N_Z)
-            objs_A.append(obj)
-            if obj < obj_star:
-                obj_star = obj
-                mu_star = mu_p
-                A_star = A_p
-                
-            # mu first
-            mu_p = optimal_mu(mu, A, N_A, A, s, slack=delta_s*A_contribution)
-            A_p = optimal_A(mu, A, N_A, mu_p, s)
-            obj = objective(mu, A, mu_p, A_p, N_A, N_Z)
-            objs_mu.append(obj)
-            if obj < obj_star:
-                obj_star = obj
-                mu_star = mu_p
-                A_star = A_p
-        
-        if verbose:
-            plt.plot(grid, objs_A, label="A first")
-            plt.plot(grid, objs_mu, label="mu first")
-            plt.legend()
-            plt.show()
 
     return obj_star, mu_star, A_star
-
-
-def coordinate_descent_GLR(mu, A, N_A, N_Z, iters=10, verbose=True):
-    n, k = A.shape
-    
-    i_star, _ = best_arm(mu, A)
-    
-    obj_star = np.inf
-    mu_star, A_star = None, None
-    for s in tqdm(range(n), desc="coordinate_descent", disable=~verbose):
-        if s == i_star:
-            continue
-        
-        # mu first
-        A_p = A
-        mu_p = mu
-        for _ in range(iters):
-            mu_p = optimal_mu(mu, A, N_A, A_p, s)
-            A_p = optimal_A(mu, A, N_A, mu_p, s)
-
-        obj = objective(mu, A, mu_p, A_p, N_A, N_Z)
-        if obj < obj_star:
-            obj_star = obj
-            mu_star = mu_p
-            A_star = A_p
-        
-        # A first
-        A_p = A
-        mu_p = mu
-        for _ in range(iters):
-            A_p = optimal_A(mu, A, N_A, mu_p, s)
-            mu_p = optimal_mu(mu, A, N_A, A_p, s)
-
-        obj = objective(mu, A, mu_p, A_p, N_A, N_Z)
-        if obj < obj_star:
-            obj_star = obj
-            mu_star = mu_p
-            A_star = A_p
-    
-    return obj_star, mu_star, A_star
-
-
-def optimize_single_point_GLR(mu, A, N_A, N_Z, method="Nelder-Mead", verbose=False):
-    n, k = A.shape
-    i_star, _ = best_arm(mu, A)
-
-    def solved_mu_objective(A_p_list, s):  # assumes gaussian
-        A_i_star = softmax(A_p_list[0:k])
-        A_s = softmax(A_p_list[k:2*k])
-
-        result = N_A[i_star] * categorical_kl(A[i_star], A_i_star) 
-        result += N_A[s] * categorical_kl(A[s], A_s)
-        
-        denom = sum([(A_i_star[j] - A_s[j])**2 / N_Z[j] for j in range(k)])
-        
-        delta = max(np.dot(A_i_star, mu) - np.dot(A_s, mu), 0.0)
-        if delta <= 0:
-            added_val = 0
-        elif denom == 0:
-            added_val = np.inf
-        else:
-            added_val = delta**2 / (2*denom)
-        result += added_val
-
-        return result
-
-    obj_star = np.inf
-    mu_star, A_star = None, None
-    for s in range(n):
-        if s == i_star:
-            continue
-        
-        # distribution constraints
-        mat = np.zeros((2, 2 * k))
-        for j in range(k):
-            mat[0][j] = 1
-            mat[1][k + j] = 1
-
-        Ai = np.random.rand(k)
-        As = np.random.rand(k)
-        x0 = np.concatenate((Ai / np.sum(Ai), As / np.sum(As)))
-        result = minimize(
-            solved_mu_objective,
-            x0=x0,
-            args=(s),
-            method=method
-        )
-
-        A_p = np.copy(A)
-        A_p[i_star] = softmax(result.x[0:k])
-        A_p[s] = softmax(result.x[k:2*k])
-        mu_p = optimal_mu(mu, A, N_A, A_p, s)
-        obj = objective(mu, A, mu_p, A_p, N_A, N_Z)
-        
-        if not np.isclose(result.fun, obj):
-            print("Non cvx glr optimization is not compatible!")
-            print(obj, result.fun)
-            print("A:", A)
-            print("mu:", mu)
-            print("N_A:", N_A)
-            print("N_Z:", N_Z)
-            print("A_p:", A_p)
-            print("mu_p:", mu_p)
-        
-        if obj < obj_star:
-            obj_star = obj
-            mu_star = mu_p
-            A_star = A_p
-
-    return obj_star, mu_star, A_star
-
-
-def optimize_ours_GLR(mu, A, N_A, N_Z, method="Nelder-Mead", verbose=False):
-    n, k = A.shape
-    i_star, _ = best_arm(mu, A)
-
-    def solved_mu_objective(A_p_list, s):  # assumes gaussian
-        A_i_star = softmax(A_p_list[0:k])
-        A_s = softmax(A_p_list[k:2*k])
-
-        result = N_A[i_star] * categorical_kl(A[i_star], A_i_star) 
-        result += N_A[s] * categorical_kl(A[s], A_s)
-        
-        denom = sum([(A_i_star[j] - A_s[j])**2 / N_Z[j] for j in range(k)])
-        
-        delta = max(np.dot(A_i_star, mu) - np.dot(A_s, mu), 0.0)
-        if delta <= 0:
-            added_val = 0
-        elif denom == 0:
-            added_val = np.inf
-        else:
-            added_val = delta**2 / (2*denom)
-        result += added_val
-
-        return result
-
-    obj_star = np.inf
-    mu_star, A_star = None, None
-    for s in range(n):
-        if s == i_star:
-            continue
-        
-        # distribution constraints
-        mat = np.zeros((2, 2 * k))
-        for j in range(k):
-            mat[0][j] = 1
-            mat[1][k + j] = 1
-
-        result = minimize(
-            solved_mu_objective, 
-            x0=np.reshape(np.log(A[[i_star, s]]), (2*k)).tolist(), 
-            args=(s), 
-            method=method
-        )
-        # doing the optimization with 2 starting points
-        A0 = optimal_A(mu, A, N_A, mu, s)
-        
-        result2 = minimize(
-            solved_mu_objective, 
-            x0=np.reshape(np.log(A0[[i_star, s]]), (2*k)).tolist(), 
-            args=(s), 
-            method=method
-        )
-        if result2.fun < result.fun:
-            result = result2
-        
-        A_p = np.copy(A)
-        A_p[i_star] = softmax(result.x[0:k])
-        A_p[s] = softmax(result.x[k:2*k])
-        mu_p = optimal_mu(mu, A, N_A, A_p, s)
-        obj = objective(mu, A, mu_p, A_p, N_A, N_Z)
-        
-        if not np.isclose(result.fun, obj):
-            print("Non cvx glr optimization is not compatible!")
-            print(obj, result.fun)
-            print("A:", A)
-            print("mu:", mu)
-            print("N_A:", N_A)
-            print("N_Z:", N_Z)
-            print("A_p:", A_p)
-            print("mu_p:", mu_p)
-        
-        if obj < obj_star:
-            obj_star = obj
-            mu_star = mu_p
-            A_star = A_p
-
-    return obj_star, mu_star, A_star
-
-
-def optimize_scipy_grad_GLR(mu, A, N_A, N_Z, method="BFGS", verbose=False):
-    n, k = A.shape
-    i_star, _ = best_arm(mu, A)
-
-    def solved_mu_objective(A_p_list, s):  # assumes gaussian
-        A_p = np.copy(A)
-        A_p[i_star] = softmax(A_p_list[0:k])
-        A_p[s] = softmax(A_p_list[k:2*k])
-
-        result = 0
-        for i in range(n):
-            result += N_A[i] * categorical_kl(A[i], A_p[i])
-        
-        denom = 0
-        for j in range(k):
-            denom += (A_p[i_star][j] - A_p[s][j])**2 / N_Z[j]
-        
-        delta = max(np.dot(A_p[i_star], mu) - np.dot(A_p[s], mu), 0.0)
-        if delta == 0:
-            added_val = 0
-        elif denom == 0:
-            added_val = np.inf
-        else:
-            added_val = delta**2 / (2*denom)
-        result += added_val
-
-        return result
-
-    def jac(A_p_list, s):  # assumes gaussian
-        A_p = np.copy(A)
-        A_p[i_star] = softmax(A_p_list[0:k])
-        A_p[s] = softmax(A_p_list[k:2*k])
-        means = np.dot(A_p, mu)
-        delta_s = means[i_star] - means[s]
-        denom = sum([(A_p[i_star, j] - A_p[s, j]) ** 2 / N_Z[j] for j in range(k)])
-        
-        s_grad, i_star_grad = np.zeros(k), np.zeros(k)
-        for j in range(k):
-            i_star_grad[j] += - N_A[i_star] * (A[i_star, j] / A_p[i_star, j])
-            if delta_s > 0:
-                i_star_grad[j] += -2 * delta_s**2 * (A_p[i_star, j] - A_p[s, j]) / (N_Z[j] * denom)
-
-            s_grad[j] += - N_A[s] * (A[s, j] / A_p[s, j])
-            if delta_s > 0:
-                s_grad[j] += -2 * delta_s**2 * (A_p[s, j] - A_p[i_star, j]) / (N_Z[j] * denom)
-
-        i_star_grad = np.multiply(A_p[i_star], (i_star_grad - np.dot(A_p[i_star], i_star_grad)))  # accounting for softmax
-        s_grad = np.multiply(A_p[s], (s_grad - np.dot(A_p[s], s_grad)))  # accounting for softmax
-        grad = np.concatenate((i_star_grad, s_grad))
-        
-        return grad
-
-    obj_star = np.inf
-    mu_star, A_star = None, None
-    for s in range(n):
-        if s == i_star:
-            continue
-        
-        # distribution constraints
-        mat = np.zeros((2, 2 * k))
-        for j in range(k):
-            mat[0][j] = 1
-            mat[1][k + j] = 1
-
-        result = minimize(
-            fun=solved_mu_objective,
-            jac=jac,
-            x0=np.reshape(np.log(A[[i_star, s]]), (2*k)).tolist(), 
-            args=(s), 
-            method=method
-        )
-        # doing the optimization with 2 starting points
-        A0 = optimal_A(mu, A, N_A, mu, s)
-        
-        result2 = minimize(
-            fun=solved_mu_objective, 
-            jac=jac,
-            x0=np.reshape(np.log(A0[[i_star, s]]), (2*k)).tolist(), 
-            args=(s), 
-            method=method
-        )
-        if result2.fun < result.fun:
-            result = result2
-        
-        A_p = np.copy(A)
-        A_p[i_star] = softmax(result.x[0:k])
-        A_p[s] = softmax(result.x[k:2*k])
-        mu_p = optimal_mu(mu, A, N_A, A_p, s)
-        obj = objective(mu, A, mu_p, A_p, N_A, N_Z)
-        
-        if not np.isclose(result.fun, obj):
-            print("Non cvx glr optimization is not compatible!")
-            print(obj, result.fun)
-            print("A:", A)
-            print("mu:", mu)
-            print("N_A:", N_A)
-            print("N_Z:", N_Z)
-            print("A_p:", A_p)
-            print("mu_p:", mu_p)
-        
-        if obj < obj_star:
-            obj_star = obj
-            mu_star = mu_p
-            A_star = A_p
-
-    return obj_star, mu_star, A_star
-
-
-########## lowerbounds
-
-def lowerbound_GLR(mu, A, N_A, N_Z, verbose=False):
-    c_m = 0.5  # assumed gaussian distribution
-    n, k = A.shape
-    
-    means = np.dot(A, mu)
-    sorted_arms = np.argsort(means)
-    i_star = sorted_arms[-1]   
-    s = sorted_arms[-2]
-    
-    delta_s = means[i_star] - means[s]
-    denom = 1/(2 * N_A[s]) + 1/(2 * N_A[i_star]) + sum([1/(c_m * N_Z[i]) for i in range(k)])
-
-    return delta_s**2 / denom, None, None  # 2 variables to be compatible
 
 
 ########## Wrapper
 
 ALGS_GLR = {
-    "coordinate": coordinate_descent_GLR,
-    "single_point": optimize_single_point_GLR,
-    "ours": optimize_ours_GLR,
-    "scipy_grad": optimize_scipy_grad_GLR,
+    "plain": plain_GLR,
+    "reference": reference_GLR,
+    "exact_k2": exact_GLR_k2,
     "grid": grid_search_GLR,
-    "contribution": contribution_optimization_GLR,
-    "lowerbound": lowerbound_GLR
 }
 
-def optimize_GLR(mu, A, N_A, N_Z, alg="ours", verbose=False):
+def optimize_GLR(mu, A, N_A, N_Z, alg="plain", verbose=False):
     if alg not in ALGS_GLR.keys():
         print("Invalid GLR alg name!")
         return None
-    optimization_alg: function = ALGS_GLR[alg]
+    optimization_alg = ALGS_GLR[alg]
 
     return optimization_alg(mu, A, N_A, N_Z, verbose=verbose)
 
 
 ############################## w optimization
 
-def grid_search(mu, A, div=21, solver=cp.CLARABEL, verbose=True):
+def optimize_bfgs(mu, A, method="BFGS", inner_alg="plain", w0=None, verbose=False):
+    # maximizes the concave w -> F(mu, A, w, A^T w) over softmax(w), the gradient comes from Danskin's theorem
     n, k = A.shape
-    # Used coordinate ternary search to get to the result
-    obj_star = -np.inf  
-    w_star = None
-    
-    objs = []
-    grid_range = np.linspace(0, 1, div)
-    grid = itertools.product(grid_range, repeat=n-1)
-    # Note that w[0] is always 1 - sum of the rest.
-    for w_p in grid:
-        w0 = 1 - sum(w_p)
-        if w0 < 0:
-            continue
-        
-        w_p = np.array(([w0] + list(w_p)))
 
-        obj_p, _, _ = grid_search_GLR(mu, A, w_p, np.dot(A.T, w_p), solver=solver, div=11, div2=11, verbose=False)
-        objs.append(obj_p)
-        
-        if obj_p > obj_star:
-            w_star = w_p
-            obj_star = obj_p
-            
-    w_p_base = w_star[0:-1].copy()
-    gap = 1/(div-1)
-    grid_range = np.linspace(-gap, gap, div)
-    grid = itertools.product(grid_range, repeat=k-1)
-    for noise in grid:
-        w_p = np.clip(w_p_base + noise, 0, 1)
-        w0 = 1 - sum(w_p)
-        if w0 < 0:
-            continue
-        
-        w_p = np.array(([w0] + list(w_p)))
+    if w0 is None:
+        w0 = np.ones(n) / n
+    # Need to convert w0 to pre-image of softmax
+    EPS = 1e-10
+    w0 = np.log(w0 + EPS)
 
-        obj_p, _, _ = grid_search_GLR(mu, A, w_p, np.dot(A.T, w_p), solver=solver, div=11, div2=11, verbose=False)
-        objs.append(obj_p)
-        
-        if obj_p > obj_star:
-            w_star = w_p
-            obj_star = obj_p
-    
-    if verbose and n == 2:
-        fig = px.line(x=np.linspace(0, 1, div), y=objs)
-        fig.show()
-
-    obj_star, _, _ = grid_search_GLR(mu, A, w_star, np.dot(A.T, w_star))
-    return obj_star, w_star
-
-
-def ternary_search(mu, A, EPS=1e-3, max_iter=20, inner_alg="ours", verbose=True):
-    n, k = A.shape
-    # Used coordinate ternary search to get to the result
-    w_star = np.random.rand(n)
-    w_star = w_star / np.sum(w_star)
-    
-    # Note that w[0] is always 1 - sum of the rest.
-    for _ in range(max_iter):
-        old_w_star = w_star.copy()
-        
-        for i in tqdm(range(1, n), desc="optimizing over coordinates", disable=not verbose, leave=False):
-            
-            l = 0.0
-            r = w_star[i] + w_star[0]
-            
-            while l + EPS < r:
-                wi1 = (5*l + 4*r) / 9
-                w_p1 = np.copy(w_star)
-                w_p1[i] = wi1
-                w_p1[0] = w_star[i] + w_star[0] - wi1
-                w_p1 = w_p1 / sum(w_p1)
-                wi2 = (4*l + 5*r) / 9
-                w_p2 = np.copy(w_star)
-                w_p2[i] = wi2
-                w_p2[0] = w_star[i] + w_star[0] - wi2
-                w_p2 = w_p2 / sum(w_p2)
-                obj1, _, _ = optimize_GLR(mu, A, w_p1, np.dot(A.T, w_p1), alg=inner_alg)
-                obj2, _, _ = optimize_GLR(mu, A, w_p2, np.dot(A.T, w_p2), alg=inner_alg)
-                if obj1 > obj2:
-                    r = wi2
-                else:
-                    l = wi1
-            
-            wi = (l + r) / 2
-            w0 = w_star[i] + w_star[0] - wi
-            w_star[i] = wi
-            w_star[0] = w0
-            w_star = w_star / np.sum(w_star)  # make sure sum to 1
-        
-        if np.allclose(old_w_star, w_star, atol=EPS, rtol=0):
-            break
-
-    obj_star, _, _ = optimize_GLR(mu, A, w_star, np.dot(A.T, w_star), alg=inner_alg)
-    return obj_star, w_star
-
-
-def optimize_ours(mu, A, method="BFGS", inner_alg="ours", w0=None, verbose=True):
-    n, k = A.shape
-    
-    if w0 is None:    
-        w0 = np.random.rand(n)
-        w0 = w0 / np.sum(w0)
-    else:
-        # Need to convert w0 to pre-image of softmax
-        EPS = 1e-10
-        w0 = np.log(w0 + EPS)
-    
     # caching the optimization to be used both by fun and jac
     last_w, last_result = None, None
-    def fun(w):
+    def solve(w):
         nonlocal last_w, last_result
         w_soft = softmax(w)
         if not np.array_equal(w_soft, last_w):
             last_result = optimize_GLR(mu, A, w_soft, np.dot(A.T, w_soft), alg=inner_alg)
         last_w = w_soft
-        return -last_result[0]
+        return w_soft, last_result
+
+    def fun(w):
+        return -solve(w)[1][0]
 
     def jac(w):
-        nonlocal last_w, last_result
-        w_soft = softmax(w)
-
-        if not np.array_equal(w_soft, last_w):
-            last_result = optimize_GLR(mu, A, w_soft, np.dot(A.T, w_soft), alg=inner_alg)
-        last_w = w_soft
-        
-        obj_star, mu_star, A_star = last_result
-        i_star, _ = best_arm(mu, A)
-        s, _ = best_arm(mu_star, A_star)
-        if i_star == s:
-            # This happens when mean of s and i_star equal exactly
-            # Replace s with the second biggest value
-            sorted_arms = np.argsort(np.dot(A_star, mu_star))
-            if sorted_arms[-1] == i_star:
-                s = sorted_arms[-2]
-            else:
-                s = sorted_arms[-1]
-        
-        d_mu = np.square(mu - mu_star) / 2
-        grad = A @ d_mu
-        grad[i_star] += categorical_kl(A[i_star], A_star[i_star])
-        grad[s] += categorical_kl(A[s], A_star[s])
-        
+        w_soft, (obj_star, mu_star, A_star) = solve(w)
+        # d/dw_i of sum_i w_i KL(A_i||B_i) + sum_j (A^T w)_j d(mu_j, lambda_j), at the optimal alternative
+        grad = np.array([categorical_kl(A[i], A_star[i]) for i in range(n)])
+        grad += A @ (np.square(mu - mu_star) / (2 * SIGMA**2))
         grad = np.multiply(w_soft, (grad - np.dot(w_soft, grad)))  # accounting for softmax
-                
         return -grad
-    
+
     result = minimize(
-            fun=fun, 
+            fun=fun,
             jac=jac,
-            x0=w0, 
+            x0=w0,
             method=method,
             options={"disp": verbose}
         )
-    
-    if verbose and n == 2:
-        grid = np.linspace(0, 1, 101)
-        funs = []
-        jacs = []
-        for w_0 in grid:
-            w_p = np.array([w_0, 1 - w_0])
-            funs.append(fun(w_p))
-            jacs.append(jac(w_p)[0])
-        
-        plt.plot(grid, funs, label="function")
-        plt.plot(grid, jacs, label="gradient")
-        plt.legend()
-        plt.show()
-    
+
     w_star = softmax(result.x)
     obj_star, mu_star, A_star = optimize_GLR(mu, A, w_star, np.dot(A.T, w_star), alg=inner_alg)
 
     return obj_star, w_star
 
 
-def adverserial_descent(mu, A, iters=10, inner_alg="ours", verbose=True):
-    # This method doesn't work
-    n, k = A.shape
-    
-    mu_star, A_star = mu, A
-    w_star = np.random.rand(n)
-
-    objs = []
-    for _ in tqdm(range(iters), disable=not verbose):
-        obj_star, mu_star, A_star = optimize_GLR(mu, A, w_star, np.dot(A.T, w_star), alg=inner_alg)
-        objs.append(obj_star)
-
-        w_star = optimal_w(mu, A, mu_star, A_star)
-
-    obj_star, _, _ = optimize_GLR(mu, A, w_star, np.dot(A.T, w_star), alg=inner_alg)
-
-    return obj_star, w_star
-
-########## w with lowerbound GLR
-
-def lowerbound_optimize(mu, A):
-    # TODO: This only works for n=2
-    c_m = 0.5  # assumed gaussian distribution
-    n, k = A.shape
-    
-    means = np.dot(A, mu)
-    i_star = np.argmax(means)    
-    s = np.argsort(means)[-2]
-    
-    w = cp.Variable(n)
-
-    objective = cp.Minimize(
-        cp.inv_pos(w[i_star]) / 2 + 
-        cp.inv_pos(w[s]) / 2 + 
-        cp.sum(cp.inv_pos(A.T @ w)) / c_m
-    )
-    constraints = [
-        cp.sum(w) == 1,
-        w >= 0
-    ]
-    problem = cp.Problem(objective, constraints)
-    
-    try:
-        problem.solve()
-        w_star = w.value
-        if problem.status in [cp.OPTIMAL, cp.OPTIMAL_INACCURATE]:
-            return lowerbound_GLR(mu, A, w_star, np.dot(A.T, w_star)), w_star
-        else:
-            print("non optimal value at glr lowerbound")
-            return None, None
-    except:
-        print("failed optimization at glr lowerbound")
-        return None, None
-
-
 ############################## optimization functions
 
 ALGS = {
-    "adverserial": adverserial_descent,
-    "ours": optimize_ours,
-    "ternary": ternary_search,
-    "grid": grid_search
+    "bfgs": optimize_bfgs,
 }
 
-def optimize(mu, A, alg="ours", inner_alg="unconstrained", w0=None, verbose=False):
+def optimize(mu, A, alg="bfgs", inner_alg="plain", w0=None, verbose=False):
     if alg not in ALGS.keys():
         print("Invalid alg name!")
         return None
-    optimization_alg: function = ALGS[alg]
-    
-    if w0 is None:
-        return optimization_alg(mu, A, verbose=verbose)
-    return optimization_alg(mu, A, w0=w0, verbose=verbose)
+    optimization_alg = ALGS[alg]
+
+    return optimization_alg(mu, A, inner_alg=inner_alg, w0=w0, verbose=verbose)
 
 
 ############################## optimization testing
 
-########## testing helpers
-
-def create_testset_fixed_w(n, k, cnt):
-    output_path = TESTSET_DIR + f"fixed_w_n={n}_k={k}.json"
-    
-    with open(output_path, "r") as F:
-        testset = json.load(F)
-    
-    for _ in tqdm(range(cnt), desc="expanding dataset"):
-        mu = np.random.rand(k)
-        A = np.random.rand(n, k)
-        A = (A.T / np.sum(A, axis=1)).T
-        w = np.random.rand(n)
-        w = w / np.sum(w)
-
-        obj_star, mu_star, A_star = grid_search_GLR(mu, A, w, np.dot(A.T, w), verbose=False)
-
-        idx = len(testset) + 1
-        testset.append({
-            "index": idx,
-            "mu": mu.tolist(),
-            "A": A.tolist(),
-            "w": w.tolist(),
-            "obj_star": obj_star,
-            "mu_star": mu_star.tolist(),
-            "A_star": A_star.tolist()
-        })
-    
-    with open(output_path, "w") as F:
-        json.dump(testset, F, indent=4)
-        
-    return testset
-
-
-def create_testset(n, k, cnt):
-    output_path = TESTSET_DIR + f"opt_n={n}_k={k}.json"
-    
-    with open(output_path, "r") as F:
-        testset = json.load(F)
-    
-    for _ in tqdm(range(cnt), desc="expanding dataset"):
-        mu = np.random.rand(k)
-        A = np.random.rand(n, k)
-        A = (A.T / np.sum(A, axis=1)).T
-        
-        obj_star, w_star = grid_search(mu, A, verbose=False)
-        
-        idx = len(testset) + 1
-        testset.append({
-            "index": idx,
-            "mu": mu.tolist(),
-            "A": A.tolist(),
-            "w_star": w_star.tolist(),
-            "obj_star": obj_star,
-        })
-    
-    with open(output_path, "w") as F:
-        json.dump(testset, F, indent=4)
-        
-    return testset
-
-
-def prep_testest(testset_path):
-    file_path = Path(testset_path)
-    if not file_path.exists():
-        with file_path.open('w') as F:
-            json.dump([], F)
-    
+def test_method_fixed_w(n, k, name="plain", experiment_cnt=None):
+    # compares a GLR method with the grid search ground truth stored in testsets/
+    testset_path = TESTSET_DIR + f"fixed_w_n={n}_k={k}.json"
     with open(testset_path, 'r') as F:
         testset = json.load(F)
-    
-    return testset
-
-
-def display_results_fixed_w(obj_star, mu_star, A_star, file=None):
-    print("minimum achieved:", obj_star, file=file)
-    print("optimal mu:", file=file)
-    print(mu_star, file=file)
-    print("optimal A:", file=file)
-    print(A_star, file=file)
-
-def display_results(obj_star, w_star, file=None):
-    print("maximum achieved:", obj_star, file=file)
-    print("optimal w:", file=file)
-    print(w_star, file=file)
-
-########## testing
-
-def test_method_fixed_w(n, k, name="grid", experiment_cnt=None, rep=1):
-    testset_path = TESTSET_DIR + f"fixed_w_n={n}_k={k}.json"
-    output_path=f"results/optimization/fixed_w({n}, {k})_{name}.txt"
-    if name not in ALGS_GLR.keys():
-        print("Invalid GLR alg name!")
-        return
-    
-    testset = prep_testest(testset_path)
     if experiment_cnt is None:
-        experiment_cnt = max(1, len(testset))
-    if experiment_cnt > len(testset):
-        testset = create_testset_fixed_w(n, k, experiment_cnt-len(testset))
-    
-    with open(output_path, 'w') as F:
-        print(f"~~~~~~~~~~ testing on n={n}, k={k}, {experiment_cnt} times", file=F)
-        suboptimal_gaps = {}
-        suboptimal_ratios = {}
-        fail_cnt = 0
-        for iter in tqdm(range(experiment_cnt), "testing"):
-            experiment = testset[iter]
-            index = experiment["index"]
-            mu = np.array(experiment["mu"])
-            A = np.array(experiment["A"])
-            w = np.array(experiment["w"])
-            obj_star = experiment["obj_star"]
-            mu_star = np.array(experiment["mu_star"])
-            A_star = np.array(experiment["A_star"])
+        experiment_cnt = len(testset)
 
-            alg_obj, alg_mu, alg_A = np.inf, None, None
-            for _ in range(rep):
-                result = optimize_GLR(mu, A, w, np.dot(A.T, w), alg=name, verbose=False)
-                if result[0] < alg_obj:
-                    alg_obj, alg_mu, alg_A = result
+    gaps, ratios = [], []
+    fail_cnt = 0
+    for experiment in tqdm(testset[:experiment_cnt], "testing"):
+        mu = np.array(experiment["mu"])
+        A = np.array(experiment["A"])
+        w = np.array(experiment["w"])
+        obj_star = experiment["obj_star"]
 
-            suboptimal_gaps[iter] = alg_obj - obj_star
-            suboptimal_ratios[iter] = alg_obj / obj_star
-            if obj_star + TOL < alg_obj:
-                fail_cnt += 1
-                print(f"##### failed test {index} with {alg_obj - obj_star} gap!", file=F)
-            else:
-                print(f"##### succeeded test {index} with {alg_obj - obj_star} gap!", file=F)
-            
-            print(f"mu:\n{mu}\nA:\n{A}\nw:\n{w}", file=F)
-            print("-" * 20, "ground truth", "-" * 20, file=F)
-            display_results_fixed_w(obj_star, mu_star, A_star, file=F)
-            print("-" * 20, name, "-" * 20, file=F)
-            display_results_fixed_w(alg_obj, alg_mu, alg_A, file=F)
-            print("#" * 60, file=F)
-        
-        print("#" * 20, "final success rate:", 1 - fail_cnt / experiment_cnt, file=F)
-        print("#" * 20, "average suboptimality gap:", sum(suboptimal_gaps.values()) / experiment_cnt, file=F)
-        print("#" * 20, "average suboptimality ratio:", sum(suboptimal_ratios.values()) / experiment_cnt, file=F)
-        print("### suboptimality gaps:", file=F)
-        print(suboptimal_gaps, file=F)
-        print("### suboptimality ratios:", file=F)
-        print(suboptimal_ratios, file=F)
-        
-        print("final success rate:", 1 - fail_cnt / experiment_cnt)
-        print("average suboptimality gap:", sum(suboptimal_gaps.values()) / experiment_cnt)
-        print("average suboptimality ratio:", sum(suboptimal_ratios.values()) / experiment_cnt)
+        alg_obj, _, _ = optimize_GLR(mu, A, w, np.dot(A.T, w), alg=name)
 
-    
-    fig = px.box(x=suboptimal_gaps.values(), title=f"{name} suboptimality gaps")
-    fig.show()
+        gaps.append(alg_obj - obj_star)
+        ratios.append(alg_obj / obj_star)
+        if obj_star + TOL < alg_obj:
+            fail_cnt += 1
+            print(f"##### failed test {experiment['index']} with {alg_obj - obj_star} gap!")
+
+    print(f"{name} on n={n}, k={k}, {experiment_cnt} tests")
+    print("success rate:", 1 - fail_cnt / experiment_cnt)
+    print("worst suboptimality gap:", max(gaps), "best:", min(gaps))
+    print("ratio to grid search: min", min(ratios), "median", np.median(ratios), "max", max(ratios))
 
 
-def test_method(n, k, name="", experiment_cnt=None, rep=1):
+def test_method(n, k, name="bfgs", experiment_cnt=None):
+    # compares a w optimization method with the grid search ground truth stored in testsets/
     testset_path = TESTSET_DIR + f"opt_n={n}_k={k}.json"
-    output_path=f"results/optimization/opt({n}, {k})_{name}.txt"
-    
-    if name not in ALGS.keys():
-        print("Invalid alg name!")
-        return
-    
-    testset = prep_testest(testset_path)
+    with open(testset_path, 'r') as F:
+        testset = json.load(F)
     if experiment_cnt is None:
-        experiment_cnt = max(1, len(testset))
-    if experiment_cnt > len(testset):
-        testset = create_testset(n, k, experiment_cnt-len(testset))
-    
-    with open(output_path, 'w') as F:
-        print(f"~~~~~~~~~~ testing on n={n}, k={k}, {experiment_cnt} times", file=F)
-        suboptimal_gaps = {}
-        fail_cnt = 0
-        for iter in tqdm(range(experiment_cnt), "testing"):
-            experiment = testset[iter]
-            mu = np.array(experiment["mu"])
-            A = np.array(experiment["A"])
-            w_star = np.array(experiment["w_star"])
-            obj_star = experiment["obj_star"]
-            
-            alg_obj, alg_w = -np.inf, None
-            for _ in range(rep):
-                result = optimize(mu, A, alg=name, verbose=False)
-                if result[0] > alg_obj:
-                    alg_obj, alg_w = result
+        experiment_cnt = len(testset)
 
-            suboptimal_gaps[iter] = obj_star - alg_obj
-            if obj_star - TOL > alg_obj:
-                fail_cnt += 1
-                print(f"##### failed test {iter} with {obj_star - alg_obj} gap!", file=F)
-            else:
-                print(f"##### succeeded test {iter} with {obj_star - alg_obj} gap!", file=F)
-            
-            print(f"mu:\n{mu}\nA:\n{A}", file=F)
-            print("-" * 20, "ground truth", "-" * 20, file=F)
-            display_results(obj_star, w_star, file=F)
-            print("-" * 20, name, "-" * 20, file=F)
-            display_results(alg_obj, alg_w, file=F)
-            print("#" * 60, file=F)
-        
-        print("#" * 20, "final success rate:", 1 - fail_cnt / experiment_cnt, file=F)
-        print("#" * 20, "average suboptimality gap:", sum(suboptimal_gaps.values()) / experiment_cnt, file=F)
-        print("### suboptimality gaps:", file=F)
-        print(suboptimal_gaps, file=F)
-        
-        print("final success rate:", 1 - fail_cnt / experiment_cnt)
-        print("average suboptimality gap:", sum(suboptimal_gaps.values()) / experiment_cnt)
-    
-    fig = px.box(x=suboptimal_gaps.values(), title=f"{name} suboptimality gaps")
-    fig.show()
+    gaps = []
+    fail_cnt = 0
+    for experiment in tqdm(testset[:experiment_cnt], "testing"):
+        mu = np.array(experiment["mu"])
+        A = np.array(experiment["A"])
+        obj_star = experiment["obj_star"]
 
+        alg_obj, alg_w = optimize(mu, A, alg=name)
 
-def optimize_instance(index, alg, experiment_cnt=1):
-    instance_path = f"instances/instance{index}.json"
-    _, _, _, mu, A = read_instance_from_json(instance_path)
+        gaps.append(obj_star - alg_obj)
+        if obj_star - TOL > alg_obj:
+            fail_cnt += 1
+            print(f"##### failed test {experiment['index']} with {obj_star - alg_obj} gap!")
 
-    if alg not in ALGS.keys():
-        print("Invalid alg name!")
-        return
-    
-    st_time = time.time()
-    obj_star, w_star = optimize(mu, A, alg, w0=np.array([0.45, 0.45, 0.1]), verbose=True)
-    fn_time = time.time()
-    
-    print(f"It took {fn_time - st_time} seconds to find:")
-    print(obj_star, w_star)
+    print(f"{name} on n={n}, k={k}, {experiment_cnt} tests")
+    print("success rate:", 1 - fail_cnt / experiment_cnt)
+    print("worst suboptimality gap:", max(gaps), "best:", min(gaps))
 
 
 ########## main
 
 if __name__ == "__main__":
     args = get_optimization_arguments()
-    if args.instance_index is None:
-        if args.fixed_w:
-            test_method_fixed_w(args.n, args.k, experiment_cnt=args.experiment_cnt, name=args.name)
-        else:
-            test_method(args.n, args.k, experiment_cnt=args.experiment_cnt, name=args.name)
+    if args.fixed_w:
+        test_method_fixed_w(args.n, args.k, experiment_cnt=args.experiment_cnt, name=args.name)
     else:
-        optimize_instance(index=args.instance_index, alg=args.name)
+        test_method(args.n, args.k, experiment_cnt=args.experiment_cnt, name=args.name)

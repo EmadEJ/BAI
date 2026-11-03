@@ -4,7 +4,7 @@ from abc import ABC, abstractmethod
 
 # Base Track and Stop
 class TS(ABC):
-    def __init__(self, n, k, confidence, tracking, mode = {'average_w': False}):
+    def __init__(self, n, k, confidence, tracking, mode = {'average_w': False, 'fast': True}):
         self.n = n
         self.k = k
         self.confidence = confidence
@@ -15,8 +15,18 @@ class TS(ABC):
         self.mode = mode
         self.sum_ws = np.zeros(n)
         
+        self.last_w = None  # last solution of the sampling rule optimization
+        self.n_optimizations = 0
+        
         self.optimization_failed_flag = False
         self.optimization_failed_number_of_rounds = 0
+
+    def skip_optimization(self):
+        # fast mode: once T has d digits, the optimal w is only recomputed every 10^(d-2) rounds
+        if not self.mode.get('fast', False) or self.last_w is None:
+            return False
+        period = 10 ** max(len(str(self.T)) - 2, 0)
+        return self.T % period != 0
 
     @abstractmethod
     def stopping_rule(self):
@@ -62,7 +72,7 @@ class TS(ABC):
             
         self.sum_ws += w_projected/np.sum(w_projected)  # make sure w sums up to 1
         
-        if self.mode["average_w"]:
+        if self.mode.get("average_w", False):
             target = (self.sum_ws)/ np.sum(self.sum_ws) * np.sum(self.N_A)  # some optimization rounds may have failed so scale up to match it
         else:
             target = w_projected * np.sum(self.N_A)
@@ -81,7 +91,7 @@ class TS(ABC):
             
         self.sum_ws += w/np.sum(w)  # make sure w sums up to 1
         
-        if self.mode["average_w"]:
+        if self.mode.get("average_w", False):
             target = (self.sum_ws)/ np.sum(self.sum_ws) * np.sum(self.N_A)
         else:
             target = w * np.sum(self.N_A)
@@ -112,7 +122,7 @@ class TS(ABC):
                     
         self.sum_ws += w_projected/np.sum(w_projected)  # make sure w sums up to 1
         
-        if self.mode["average_w"]:
+        if self.mode.get("average_w", False):
             target = (self.sum_ws)/ np.sum(self.sum_ws) * np.sum(self.N_A)  # some optimization rounds may have failed so scale up to match it
         else:
             target = w_projected * np.sum(self.N_A)
@@ -142,7 +152,7 @@ class TS(ABC):
 
         self.sum_ws += w_projected/np.sum(w_projected)  # make sure w sums up to 1
         
-        if self.mode["average_w"]:
+        if self.mode.get("average_w", False):
             target = (self.sum_ws)/ np.sum(self.sum_ws) * np.sum(self.N_A)  # some optimization rounds may have failed so scale up to match it
         else:
             target = w_projected * np.sum(self.N_A)

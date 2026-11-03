@@ -1,24 +1,28 @@
 from utils import *
-from optimization import optimize, optimize_GLR, lowerbound_GLR
+from optimization import optimize, optimize_GLR
+from lowerbound import L_bound, optimal_w as lowerbound_optimal_w
 from algorithms.TS import TS
 import itertools
 
-# general Separator Track and Stop
+# general Separator Track and Stop (GTS-Unknown)
+# glr="lb":    stops on min_i L_i(t) > beta(t, delta) and tracks the maximizer of the lower bound (convex)
+# glr="plain": a local solver of the non-convex GLR for both, which only gives an upper bound of the GLR
 class STS(TS):
-    def __init__(self, n, k, confidence, tracking, mode = {'average_w': False, 'fast': False}):
+    def __init__(self, n, k, confidence, tracking, mode = {'average_w': False, 'fast': True}, glr="lb"):
         super().__init__(n, k, confidence, tracking, mode)
-        
+
         self.N_A = np.zeros(n)
         self.N_Z = np.zeros(k)
         self.cnt_post_actions = np.zeros((n, k))
         self.sum_of_rewards = np.zeros(k)
-        
-        # This is used for faster convergence
-        self.last_w = None
+
+        self.glr = glr
+        self.last_lambda = 0  # the plain GLR is only recomputed every T/100 rounds
+        self.last_check = 0
 
     def get_mu_hat(self):
         return self.sum_of_rewards / self.N_Z
-    
+
     def get_A_hat(self):
         return self.cnt_post_actions / self.N_A.reshape((self.n, 1))
 
@@ -32,56 +36,40 @@ class STS(TS):
         means_hat = np.dot(A_hat, mu_hat)
         delta_hat = np.max(means_hat) - means_hat
 
-        best_arm = np.argmax(means_hat)  
+        best_arm = np.argmax(means_hat)
         return best_arm, means_hat, delta_hat
 
     def get_T_star(self, mu, A):
         T_star_inv, w_star = optimize(mu, A)
         return 1/T_star_inv, w_star
 
-    def plot_w(self, mu, A, div=21, ax=None):
-        if self.n != 3:
-            print("plotting only available for n=3")
-            return
+    def F_on_simplex(self, mu, A, div=21):
+        # F(w) = inf over Alt of the information cost with q = A^T w, on a grid of the simplex (n = 3)
         grid_range = np.linspace(0, 1, div)
         grid = itertools.product(grid_range, repeat=self.n-1)
         Ts = {}
         for w in grid:
             w0 = 1 - sum(w)
-            if w0 < 0:
+            if w0 < -1e-9:
                 continue
-            w = np.array(([w0] + list(w)))
-            
-            obj = optimize_GLR(mu, A, w, np.dot(A.T, w), verbose=False)[0]
-            
-            Ts[tuple(w)] = obj
-            
-        return draw_simplex_heatmap(Ts, ax)
+            w = np.array(([max(w0, 0)] + list(w)))
+            w_safe = np.maximum(w, 1e-9)
+            Ts[tuple(w)] = optimize_GLR(mu, A, w_safe, np.dot(A.T, w_safe), alg="reference")[0]
+        return Ts
 
-    def lambda_true(self):
-        mu_hat = self.get_mu_hat()
-        A_hat = self.get_A_hat()
-        obj_star = optimize_GLR(mu_hat, A_hat, self.N_A, self.N_Z, alg="grid")[0]
-        return obj_star
-    
     def lambda_hat(self):
         mu_hat = self.get_mu_hat()
         A_hat = self.get_A_hat()
-        obj_star = optimize_GLR(mu_hat, A_hat, self.N_A, self.N_Z)[0]
-        return obj_star
-    
-    def lambda_lb(self):
-        mu_hat = self.get_mu_hat()
-        A_hat = self.get_A_hat()
-        obj_star = lowerbound_GLR(mu_hat, A_hat, self.N_A, self.N_Z)[0]
-        return obj_star
+        if self.glr == "lb":
+            return np.min(L_bound(mu_hat, A_hat, self.N_A, self.N_Z))
+        return optimize_GLR(mu_hat, A_hat, self.N_A, self.N_Z, alg="plain")[0]
 
     def beta_t_mu(self, delta):
         return (
-            self.k * Cg(np.log(1/delta) / self.k) +
+            self.k * C_exp(np.log(1/delta) / self.k) +
             3 * sum([np.log(1 + np.log(self.N_Z[j])) for j in range(self.k)])
         )
-    
+
     def beta_t_A(self, delta):
         return (
             np.log(1/delta) +
@@ -91,47 +79,47 @@ class STS(TS):
     def beta_t(self, delta):
         # This threshold is derived from the combined martingale of categorical and exponential
         return (
-            self.k * Cg(np.log(1/delta) / self.k) +
+            self.k * C_exp(np.log(1/delta) / self.k) +
             3 * sum([np.log(1 + np.log(self.N_Z[j])) for j in range(self.k)]) +
             (self.k-1) * sum([np.log(np.e * (1 + self.N_A[i] / (self.k-1))) for i in range(self.n)])
         )
 
+    def naive_beta_t(self, delta):
+        # union bound of the categorical and the exponential family thresholds
+        return self.beta_t_A(delta / 2) + self.beta_t_mu(delta / 2)
+
     def stopping_rule(self):
         # returns True if need to stop and are confident enough
-        lambda_hat_t = self.lambda_hat() 
         beta_t = self.beta_t(self.confidence)
-        return lambda_hat_t > beta_t, lambda_hat_t, beta_t
-
-    def stopping_rule2(self):
-        # returns True if need to stop and are confident enough
-        lambda_hat_t = self.lambda_hat() 
-        beta_t = self.beta_t_A(self.confidence / 2) + self.beta_t_mu(self.confidence / 2)
-        return lambda_hat_t > beta_t, lambda_hat_t, beta_t
-
-    def stopping_rule_lb(self):
-        lambda_lb = self.lambda_lb()
-        beta_t = self.beta_t(self.confidence)
-        return lambda_lb > beta_t, lambda_lb, beta_t
+        if self.glr == "plain" and self.T - self.last_check < self.T / 100:
+            # skipping a check can only delay stopping, so the stopping rule stays valid
+            return False, self.last_lambda, beta_t
+        self.last_check = self.T
+        self.last_lambda = self.lambda_hat()
+        return self.last_lambda > beta_t, self.last_lambda, beta_t
 
     def optimal_w(self):
-        if self.mode['fast'] and self.last_w is not None:
-            if self.T > 100 and self.T % 10 != 0:
-                return self.last_w
-            if self.T > 1000 and self.T % 100 != 0:
-                return self.last_w
-            if self.T > 10000 and self.T % 1000 != 0:
-                return self.last_w
-            if self.T > 100000 and self.T % 10000 != 0:
-                return self.last_w
-            if self.T > 1000000 and self.T % 100000 != 0:
-                return self.last_w
-        
+        if self.skip_optimization():
+            return self.last_w
+
         mu_hat = self.get_mu_hat()
         A_hat = self.get_A_hat()
-        
-        T_star, w_star = optimize(mu_hat, A_hat, w0=self.last_w)
+        self.n_optimizations += 1
+
+        if self.glr == "lb":
+            try:
+                _, w_star = lowerbound_optimal_w(mu_hat, A_hat)
+            except Exception as e:
+                print("Optimization failed:", e)
+                self.optimization_failed_number_of_rounds += 1
+                w_star = np.ones(self.n) / self.n if self.last_w is None else self.last_w
+        else:
+            # warm start, mixed with the uniform allocation: in the softmax parametrization a weight close to 0 has
+            # a vanishing gradient, so starting from a corner of the simplex would keep the solver stuck there
+            w0 = np.ones(self.n) / self.n if self.last_w is None else (self.last_w + 1 / self.n) / 2
+            _, w_star = optimize(mu_hat, A_hat, w0=w0)
         self.last_w = w_star
-        
+
         return w_star
 
     def get_action(self):
@@ -139,10 +127,10 @@ class STS(TS):
         if np.any(self.cnt_post_actions == 0):  # explore all of A
             unexplored_a = np.where(self.cnt_post_actions == 0)
             return unexplored_a[0][0], True
-        
+
         if self.tracking == 'C':
             return self.C_tracking()
-        elif self.tracking == 'G': 
+        elif self.tracking == 'G':
             return self.G_tracking()
         elif self.tracking == 'D':
             return self.D_tracking()
@@ -152,11 +140,26 @@ class STS(TS):
             print("INVALID TRACKING")
             return -1, False
 
+    def state(self):
+        # sufficient statistics, used to log the run of figure 2
+        return {
+            'T': self.T,
+            'cnt_post_actions': self.cnt_post_actions.tolist(),
+            'sum_of_rewards': self.sum_of_rewards.tolist(),
+        }
+
+    def load_state(self, state):
+        self.T = state['T']
+        self.cnt_post_actions = np.array(state['cnt_post_actions'])
+        self.sum_of_rewards = np.array(state['sum_of_rewards'])
+        self.N_A = self.cnt_post_actions.sum(axis=1)
+        self.N_Z = self.cnt_post_actions.sum(axis=0)
+
     def update(self, main_action, post_action, reward):
         self.T += 1
         self.cnt_post_actions[main_action][post_action] += 1
         self.N_A[main_action] += 1
         self.sum_of_rewards[post_action] += reward
         self.N_Z[post_action] += 1
-        
+
         self.optimization_failed_flag = False

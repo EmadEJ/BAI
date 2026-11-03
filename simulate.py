@@ -1,91 +1,71 @@
-import numpy as np
-import matplotlib.pyplot as plt
-import plotly.express as px
-import time
-from tqdm import tqdm
+import os
+os.environ.setdefault("OMP_NUM_THREADS", "1")  # the runs are parallelized over processes instead
+os.environ.setdefault("OPENBLAS_NUM_THREADS", "1")
 
-from utils import *
+import time
+import warnings
+import numpy as np
+from multiprocessing import Pool
+
 from io_utils import *
 from environment import *
 
-def simulate(verbose=False):
+# Usage:
+#   python simulate.py --algorithm STS-LB --instance_index 11 --runs 100 --jobs 8
+# The result file results/simulation/instance11_STS-LB.json keeps one entry per run (seed = run index),
+# so running the same command again only runs the missing seeds.
+
+
+def single_run(job):
+    index, algorithm, confidence, tracking, mode, seed, verbose = job
+    warnings.filterwarnings("ignore")
+    n, k, _, mus, A = read_instance(index)
+    env = Environment(mus, A, n, k, seed=seed)
+    return env.run(confidence, algorithm, tracking, mode, verbose=verbose)
+
+
+def simulate():
     args = get_arguments()
     index = args.instance_index
-    
-    instance_path = f"instances/instance{index}.json"
-    n, k, confidence, mus, A = read_instance_from_json(instance_path)
-    mode = {
-        'average_w': args.average_w,
-        'fast': args.fast,
-    }
-    best_arm = np.argmax(np.dot(A, mus))
+    n, k, confidence, mus, A = read_instance(index)
+    if args.delta is not None:
+        confidence = args.delta
+    mode = {'fast': not args.no_fast}
 
-    if args.cnt == 1:  
-        st_time = time.time()
-        env = Environment(mus, A, n, k, args.log_period)
-        result = env.run(
-            confidence, 
-            args.algorithm, 
-            args.tracking, 
-            mode, 
-            verbose=True, 
-            detailed=args.detailed
-        )
-        fn_time = time.time()
-        
-        if args.store:
-            add_output_to_json(index, args, result)
-        
-        print("#"*60)
-        print("The number of arm pulls is:", result['T'])
-        print("The actual best arm is:", best_arm)
-        print("The best arm identified is:", result['best_arm'])
-        print(f"Simulation process took {fn_time - st_time} seconds.")
-        print(f"Average arm pull time: {(fn_time - st_time) / result['T']} seconds")
-        print("#"*60)
-        
-        if verbose:
-            x = range(0, len(result['lambdas']) * env.log_period, env.log_period)
-            plt.plot(x, result['lambdas'], label="GLR upper bound", linewidth=3)
-            plt.plot(x, result['betas'], label="stopping threshold", linewidth=3)
-            if args.algorithm == "STS" and args.detailed:
-                plt.plot(x, result['lambda_lbs'], label="GLR lower bound", linewidth=3)
-                plt.plot(x, result['true_lambdas'], ":", label="True GLR", color="k", linewidth=3)
-                plt.plot(x, result['beta2s'], label="union bound stopping threshold", linewidth=3)
-            plt.xlabel("Arm pulls")
-            plt.ylabel("GLR value")
-            plt.legend()
-            plt.show()
-        
-    else:
-        st_time = time.time()
-        
-        Ts = []
-        best_arms = []
-        for _ in tqdm(range(args.cnt), desc="Simulations"):
-            env = Environment(mus, A, n, k)
-            result = env.run(confidence, args.algorithm, args.tracking, mode)
-            
-            Ts.append(result['T'])
-            best_arms.append(result['best_arm'])
-            
-            if args.store:
-                add_output_to_json(index, args, result)
-            
-        fn_time = time.time()
-        
-        print("#"*60)
-        print("Average number of arm pulls is:", np.mean(Ts))
-        print("Correctly identified ratio:", best_arms.count(best_arm) / args.cnt)
-        print("The actual best arm is:", best_arm)
-        print(f"Simulation process took {fn_time - st_time} seconds.")
-        print("#"*60)
-        
-        if verbose:
-            fig = px.box(x=Ts, title=f"{args.algorithm} arm pulls on instance {index}")
-            fig.update_layout(xaxis_title="Arm Pulls")
-            fig.show()
-    
+    path = simulation_path(index, args.algorithm, args.out_dir)
+    data = load_json(path, default={
+        'instance': index,
+        'algorithm': args.algorithm,
+        'confidence': confidence,
+        'mode': mode,
+        'runs': [],
+    })
+    assert data['confidence'] == confidence, f"{path} was run with another confidence"
+    done = {run['seed'] for run in data['runs']}
+    seeds = [seed for seed in range(args.runs) if seed not in done]
+    print(f"{args.algorithm} on instance {index} (n={n}, k={k}, delta={confidence}): {len(done)} runs stored, {len(seeds)} to go")
+
+    jobs = [(index, args.algorithm, confidence, args.tracking, mode, seed, args.verbose) for seed in seeds]
+    st_time = time.time()
+    with Pool(args.jobs) as pool:
+        for result in pool.imap_unordered(single_run, jobs):
+            data['runs'].append(result)
+            data['runs'].sort(key=lambda run: run['seed'])
+            save_json(path, data)
+            print(f"seed {result['seed']}: T={result['T']}, correct={result['correct']}, {result['time']:.1f}s")
+
+    runs = data['runs']
+    if not runs:
+        return
+    Ts = np.array([run['T'] for run in runs])
+    times = np.array([run['time'] for run in runs])
+    print("#"*60)
+    print(f"runs: {len(runs)}, mean T: {Ts.mean():.0f}, median T: {np.median(Ts):.0f}")
+    print(f"error rate: {1 - np.mean([run['correct'] for run in runs]):.3f} (delta = {confidence})")
+    print(f"mean time per run: {times.mean():.1f}s, per round: {np.sum(times) / np.sum(Ts) * 1e3:.2f}ms")
+    print(f"wall time now: {time.time() - st_time:.1f}s")
+    print("#"*60)
+
 
 if __name__ == "__main__":
-    simulate(verbose=True)
+    simulate()

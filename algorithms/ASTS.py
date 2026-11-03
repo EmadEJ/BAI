@@ -3,11 +3,9 @@ import cvxpy as cp
 from algorithms.TS import TS
 import itertools
 
-import matplotlib.pyplot as plt
-
 # known A Separator Track and Stop
 class ASTS(TS):
-    def __init__(self, n, k, A, confidence, tracking, mode = {'average_w': False}):
+    def __init__(self, n, k, A, confidence, tracking, mode = {'average_w': False, 'fast': True}):
         super().__init__(n, k, confidence, tracking, mode)
         self.A = A
         
@@ -46,7 +44,7 @@ class ASTS(TS):
 
     def beta_t_mu(self, delta):
         return (
-            self.k * Cg(np.log(1/delta) / self.k) +
+            self.k * C_exp(np.log(1/delta) / self.k) +
             3 * sum([np.log(1 + np.log(self.N_Z[j])) for j in range(self.k)])
         )
 
@@ -57,6 +55,10 @@ class ASTS(TS):
         return lambda_hat_t > beta_t, lambda_hat_t, beta_t
 
     def optimal_w(self):
+        if self.skip_optimization():
+            return self.last_w
+        self.n_optimizations += 1
+        
         # Adapted directly from the old implementation of ASTS
         i_star, _, delta = self.best_empirical_arm()
 
@@ -83,18 +85,16 @@ class ASTS(TS):
                 print("Optimization status failed:", problem.status)
                 self.optimization_failed_flag = True
             else:
-                return w.value
+                self.last_w = np.clip(w.value, 0, None) / np.sum(np.clip(w.value, 0, None))
+                return self.last_w
         except Exception as e:
             self.optimization_failed_flag = True
             print("Optimization failed:", e)
 
         return np.ones(self.n) / self.n
 
-    def plot_w(self, mu, A, div=101, ax=None):
-        if self.n != 3:
-            print("plotting only available for n=3")
-            return
-        
+    def F_on_simplex(self, mu, A, div=101):
+        # F(w) = min_i Delta_i^2 / (2 sum_j (A_ij - A_i*j)^2 / (A^T w)_j) on a grid of the simplex (n = 3)
         means = np.dot(A, mu)
         i_star = np.argmax(means)
         deltas = means - means[i_star]
@@ -104,21 +104,21 @@ class ASTS(TS):
         Ts = {}
         for w in grid:
             w0 = 1 - sum(w)
-            if w0 < 0:
+            if w0 < -1e-9:
                 continue
-            w = np.array(([w0] + list(w)))
-            N_Z = np.dot(A.T, w)
+            w = np.array(([max(w0, 0)] + list(w)))
+            N_Z = np.maximum(np.dot(A.T, w), 1e-12)
             
             obj = np.inf
             for i in range(self.n):
                 if i == i_star:
                     continue
                 denom = sum([(A[i, j] - A[i_star, j])**2 * (1 / N_Z[j]) for j in range(self.k)])
-                obj = min(obj, (deltas[i] ** 2) / denom)
+                obj = min(obj, (deltas[i] ** 2) / (2 * denom))
             
             Ts[tuple(w)] = obj
             
-        return draw_simplex_heatmap(Ts, ax)
+        return Ts
 
     def get_action(self):
         # Initialization phase

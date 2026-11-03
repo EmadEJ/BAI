@@ -3,11 +3,10 @@ import cvxpy as cp
 from scipy.optimize import minimize_scalar
 from algorithms.TS import TS
 import itertools
-from tqdm import tqdm
 
 # known Mu Separator Track and Stop
 class MuSTS(TS):
-    def __init__(self, n, k, mu, confidence, tracking, mode = {'average_w': False, 'fast': False}):
+    def __init__(self, n, k, mu, confidence, tracking, mode = {'average_w': False, 'fast': True}):
         super().__init__(n, k, confidence, tracking, mode)
         self.mu = mu
         
@@ -15,7 +14,31 @@ class MuSTS(TS):
         self.N_Z = np.zeros(k)
         self.cnt_post_actions = np.zeros((n, k))
         
-        self.last_w = None
+        self.projection = None
+
+    def kl_projection(self, A_star, A_s, w_star, w_s):
+        # min w_star KL(A_star||B1) + w_s KL(A_s||B2) s.t. (B2 - B1)^T mu >= 0
+        # KL(P||B) = sum P log P - P^T log B, so the problem is compiled once with c = w P as parameters
+        if self.projection is None:
+            self.c1 = cp.Parameter(self.k, nonneg=True)
+            self.c2 = cp.Parameter(self.k, nonneg=True)
+            self.B1 = cp.Variable(self.k)
+            self.B2 = cp.Variable(self.k)
+            objective = cp.Minimize(-self.c1 @ cp.log(self.B1) - self.c2 @ cp.log(self.B2))
+            constraints = [
+                cp.sum(self.B1) == 1,
+                cp.sum(self.B2) == 1,
+                (self.B2 - self.B1) @ self.mu >= 0
+            ]
+            self.projection = cp.Problem(objective, constraints)
+        
+        self.c1.value = w_star * A_star
+        self.c2.value = w_s * A_s
+        self.projection.solve()
+        
+        xlogx = lambda P: np.sum(P[P > 0] * np.log(P[P > 0]))
+        value = self.projection.value + w_star * xlogx(A_star) + w_s * xlogx(A_s)
+        return max(value, 0), self.projection.status, self.B1.value, self.B2.value
     
     def get_A_hat(self):
         return self.cnt_post_actions / self.N_A.reshape((self.n, 1))
@@ -47,31 +70,17 @@ class MuSTS(TS):
         for s in range(self.n):
             if s == i_star:
                 continue
-            # Compute the weight for each arm
-            Ai = cp.Variable(self.k)
-            As = cp.Variable(self.k)
-
-            objective = cp.Minimize(
-                N_A[i_star] * cp.sum(cp.rel_entr(A_hat[i_star], Ai)) + 
-                N_A[s] * cp.sum(cp.rel_entr(A_hat[s], As))
-            )
-            constraints = [
-                Ai >= 0,
-                cp.sum(Ai) == 1,
-                As >= 0,
-                cp.sum(As) == 1,
-                (As - Ai) @ self.mu >= 0
-            ]
-            problem = cp.Problem(objective, constraints)
-            problem.solve()
+            value, status, B1, B2 = self.kl_projection(A_hat[i_star], A_hat[s], N_A[i_star], N_A[s])
             
-            if problem.status == "optimal":
-                if problem.value <= obj_star:
-                    obj_star = problem.value
+            if status in ["optimal", "optimal_inaccurate"]:
+                if value <= obj_star:
+                    obj_star = value
                     A_p = A_hat.copy()
-                    A_p[i_star] = Ai.value
-                    A_p[s] = As.value
+                    A_p[i_star] = B1
+                    A_p[s] = B2
             else:
+                # a failed solve must not make the algorithm stop
+                obj_star, A_p = 0, A_hat.copy()
                 self.optimization_failed_flag = True
                 self.optimization_failed_number_of_rounds += 1
 
@@ -93,17 +102,9 @@ class MuSTS(TS):
         return lambda_hat_t > beta_t, lambda_hat_t, beta_t
 
     def optimal_w(self):
-        if self.mode['fast'] and self.last_w is not None:
-            if self.T > 100 and self.T % 10 != 0:
-                return self.last_w
-            if self.T > 1000 and self.T % 100 != 0:
-                return self.last_w
-            if self.T > 10000 and self.T % 1000 != 0:
-                return self.last_w
-            if self.T > 100000 and self.T % 10000 != 0:
-                return self.last_w
-            if self.T > 1000000 and self.T % 100000 != 0:
-                return self.last_w
+        if self.skip_optimization():
+            return self.last_w
+        self.n_optimizations += 1
         
         A_hat = self.get_A_hat()
         i_star, _, _ = self.best_empirical_arm()
@@ -111,24 +112,7 @@ class MuSTS(TS):
         # Our Method
         EPS = 0.01  # Tolerence in w error
         def inner_func(w, s):
-            Ai = cp.Variable(self.k)
-            As = cp.Variable(self.k)
-
-            objective = cp.Minimize(
-                w[0] * cp.sum(cp.rel_entr(A_hat[i_star], Ai)) + 
-                w[1] * cp.sum(cp.rel_entr(A_hat[s], As))
-            )
-            constraints = [
-                Ai >= 0,
-                cp.sum(Ai) == 1,
-                As >= 0,
-                cp.sum(As) == 1,
-                (As - Ai) @ self.mu >= 0
-            ]
-            problem = cp.Problem(objective, constraints)
-            problem.solve()
-            
-            return problem.value
+            return self.kl_projection(A_hat[i_star], A_hat[s], w[0], w[1])[0]
         
         def fixed_w_istar(w_istar, give_w=False):
             w = np.zeros(self.n)
@@ -166,24 +150,22 @@ class MuSTS(TS):
         
         return w_star
     
-    def plot_w(self, mu, A, div=11, ax=None):
-        if self.n != 3:
-            print("plotting only available for n=3")
-            return
+    def F_on_simplex(self, mu, A, div=11):
+        # F_mu(w) of eq. (3) on a grid of the simplex (n = 3)
         grid_range = np.linspace(0, 1, div)
         grid = itertools.product(grid_range, repeat=self.n-1)
         Ts = {}
         for w in grid:
             w0 = 1 - sum(w)
-            if w0 < 0:
+            if w0 < -1e-9:
                 continue
-            w = np.array(([w0] + list(w)))
+            w = np.array(([max(w0, 0)] + list(w)))
             
             obj = self.lambda_hat(w, A)[0]
             
             Ts[tuple(w)] = obj
             
-        return draw_simplex_heatmap(Ts, ax)
+        return Ts
     
     def get_action(self):
         # Initialization phase
