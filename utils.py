@@ -27,16 +27,6 @@ def W_bar(x):
     # W(x) = -W_{-1}(-e^{-x}) used in the sub-Gaussian threshold of [TD25a], x + ln(x) <= W(x) <= x + ln(x) + 1/2
     return -lambertw(-np.exp(-x), k=-1).real
 
-# divergence of bernouli d(delta, 1-delta)
-def dB(x):
-    return x * np.log(x / (1-x)) + (1-x) * np.log((1-x) / x)
-
-def hidden_action_sampler(distribution, n_samples = None):
-    if n_samples:
-        return np.random.choice(np.arange(len(distribution)), size = n_samples, p = distribution)
-        
-    return np.random.choice(np.arange(len(distribution)), p = distribution)
-
 
 def context_initiator(n, k, mode = "random"):
 

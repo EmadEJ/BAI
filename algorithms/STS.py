@@ -41,10 +41,6 @@ class STS(TS):
         best_arm = np.argmax(means_hat)
         return best_arm, means_hat, delta_hat
 
-    def get_T_star(self, mu, A):
-        T_star_inv, w_star = optimize(mu, A)
-        return 1/T_star_inv, w_star
-
     def F_on_simplex(self, mu, A, div=21):
         # F(w) = inf over Alt of the information cost with q = A^T w, on a grid of the simplex (n = 3)
         grid_range = np.linspace(0, 1, div)

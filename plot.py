@@ -244,7 +244,7 @@ def fig4(index=6):
         cbar.ax.set_xticklabels([f"{F.min():.1e}" if F.min() > 0 else "0", f"{F.max():.1e}"], fontsize=7)
         cbar.outline.set_linewidth(0.5)
     fig.tight_layout(w_pad=0.5)
-    save(fig, f"fig4_heatmaps")
+    save(fig, "fig4_heatmaps")
 
 
 ############################## bound tightness

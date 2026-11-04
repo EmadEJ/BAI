@@ -28,7 +28,9 @@ arm, with the probabilities of the k contexts (the transpose of the k x n matrix
 | 7, 8 | 3, 2, 1e-3 | delta-correctness check (run with delta = 0.1), easier versions of instances 4 and 5 |
 | 10 n + k | n, k, 1e-3 | figure 5: 32, 33, 34, 62, 63, 64, 92, 93, 94, 122, 123, 124 |
 
-Instances 1, 2, 4, 5 and 6 are also the main instances of the bound tightness table.
+Instances 1, 2, 4, 5 and 6 are also the main instances of the bound tightness table. The figure 5 instances have the
+rows of `A` drawn by `utils.context_initiator(n, k, "random")` and `mus` uniform in [0, 1] (instance 124 with
+`np.random.seed(2)`), and `io_utils.add_instance_to_json` writes a new instance file.
 
 ## The code
 
@@ -85,6 +87,9 @@ python heatmaps.py --instance_index 6 --div 61 --jobs 8
 python bound_tightness.py --jobs 8
 python optimization.py -n 2 -k 3 --fixed_w --name plain   # checks the GLR solver against the grid search of testsets/
 ```
+
+In `testsets/fixed_w_n=2_k=3.json`, 4 of the 100 grid search solutions have rewards outside [0, 1] (they were made
+before the grid was clipped), so the solver, which keeps the rewards in [0, 1], is reported above them on those 4.
 
 `simulate.py` also takes several algorithms and instances (`--algorithm STS-LB ASTS --instance_index 4 5`), all
 their missing runs then share one pool, the slowest algorithm first. Do not run the same (instance, algorithm) in two
