@@ -395,9 +395,13 @@ def clopper_pearson_upper(errors, runs, level=0.95):
 if __name__ == "__main__":
     set_style()
     targets = sys.argv[1:] or ["all"]
+    # numbers are instances for a figure 2 of their own: python plot.py fig2 16 17 -> figures/fig2_glr_trace_16_17.pdf
+    fig2_instances = [int(t) for t in targets if t.isdigit()]
     if "all" in targets:
         targets = ["fig2", "fig3", "fig4", "fig5", "tightness", "tables"]
-    if "fig2" in targets:
+    if "fig2" in targets and fig2_instances:
+        fig2(fig2_instances, "fig2_glr_trace_" + "_".join(map(str, fig2_instances)))
+    elif "fig2" in targets:
         fig2()
         if Path("results/glr_trace/instance15.json").exists():
             fig2([15], "fig2_glr_trace_k4")  # the same on an instance with k = 4

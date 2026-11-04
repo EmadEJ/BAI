@@ -71,6 +71,25 @@ their missing runs then share one pool, the slowest algorithm first. Do not run 
 commands at the same time: both would write the same result file. To stop the runs, use Ctrl-C (or
 `pkill -f simulate.py`; on macOS the workers are `multiprocessing.spawn` processes and need to be killed too).
 
+### Figure 2 on another instance
+
+1. Write `instances/instance16.json` (any unused number), with `"A"` given row by row: one row per arm, with the k
+   probabilities of the contexts (the transpose of the paper's k x n matrix). All entries must be positive, the rows sum
+   to 1, `"mus"` is in [0, 1] and the best arm is unique. `"confidence"` is delta.
+2. Run the trace, then draw it (the paper figure `fig2_glr_trace` is not touched):
+
+```bash
+python glr_trace.py --instance_index 16 --log_period 20 --jobs 8
+python plot.py fig2 16          # figures/fig2_glr_trace_16.pdf, or "fig2 16 17" for two panels
+```
+
+`glr_trace.py` prints when each statistic crosses each threshold. The run continues until both lower bounds crossed the
+naive threshold, so a harder instance (smaller gap, smaller delta) runs longer; keep about 1000 to 2000 logged rounds
+with `--log_period` (the run length divided by 1500). `--delta` overrides the delta of the instance, `--seed` changes
+the sample path, and `--reference_starts` (20 by default) is the number of random starting points of the true GLR for
+k >= 3 (for k = 2 it is the exact closed form). With 8 cores it takes about 1.5 min for instance 13 (k = 2), 1 min for
+instance 14 (k = 3) and 5 min for instance 15 (k = 4, with `--reference_starts 100`).
+
 ### Expected runtimes
 
 Measured on one core of a laptop (Apple M5, all cores busy), a server core can be up to 2x slower. `figures/tables.md`
