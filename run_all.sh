@@ -27,16 +27,16 @@ TARGETS="$*"
 if wants light; then
     # a few minutes each, also fine on a laptop
     $PYTHON -u bound_tightness.py --jobs $JOBS > logs/bound_tightness.log 2>&1
-    $PYTHON -u glr_trace.py --instance_index 13 --log_period 20 --jobs $JOBS > logs/glr_trace_13.log 2>&1
-    $PYTHON -u glr_trace.py --instance_index 14 --log_period 50 --jobs $JOBS > logs/glr_trace_14.log 2>&1
-    $PYTHON -u glr_trace.py --instance_index 15 --log_period 50 --reference_starts 100 --jobs $JOBS > logs/glr_trace_15.log 2>&1
-    $PYTHON -u heatmaps.py --instance_index 10 --div 61 --jobs $JOBS > logs/heatmaps_10.log 2>&1
+    $PYTHON -u glr_trace.py --instance_index 1 --log_period 20 --jobs $JOBS > logs/glr_trace_1.log 2>&1
+    $PYTHON -u glr_trace.py --instance_index 2 --log_period 50 --jobs $JOBS > logs/glr_trace_2.log 2>&1
+    $PYTHON -u glr_trace.py --instance_index 3 --log_period 50 --reference_starts 100 --jobs $JOBS > logs/glr_trace_3.log 2>&1
+    $PYTHON -u heatmaps.py --instance_index 6 --div 61 --jobs $JOBS > logs/heatmaps_6.log 2>&1
 fi
 if wants fig3; then
-    run_simulations "11 12" 100 "" fig3
+    run_simulations "4 5" 100 "" fig3
 fi
 if wants delta; then
-    run_simulations "21 22" 200 "--delta 0.1 --out_dir results/delta_correctness/" delta
+    run_simulations "7 8" 200 "--delta 0.1 --out_dir results/delta_correctness/" delta
 fi
 if wants fig5; then
     run_simulations "32 33 34 62 63 64 92 93 94 122 123 124" 20 "" fig5

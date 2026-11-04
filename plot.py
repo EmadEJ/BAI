@@ -16,8 +16,8 @@ from environment import ALGORITHMS
 # The figures go to figures/ (pdf + png), the tables to figures/tables.md and figures/*.tex
 
 FIG_DIR = "figures/"
-FIG2_INSTANCES = [13, 14]
-FIG3_INSTANCES = {11: "Instance (16)", 12: "Instance (17)"}
+FIG2_INSTANCES = [1, 2]
+FIG3_INSTANCES = {4: "Instance (16)", 5: "Instance (17)"}
 FIG5_N, FIG5_K = [3, 6, 9, 12], [2, 3, 4]  # instance index is 10 n + k
 FIG5_INSTANCES = [10 * n + k for n in FIG5_N for k in FIG5_K]
 DELTA_DIR = "results/delta_correctness/"
@@ -211,7 +211,7 @@ def fig5():
 
 ############################## figure 4
 
-def fig4(index=10):
+def fig4(index=6):
     d = load_json(f"results/heatmaps/instance{index}.json")
     if d is None:
         return
@@ -403,21 +403,19 @@ if __name__ == "__main__":
         fig2(fig2_instances, "fig2_glr_trace_" + "_".join(map(str, fig2_instances)))
     elif "fig2" in targets:
         fig2()
-        if Path("results/glr_trace/instance15.json").exists():
-            fig2([15], "fig2_glr_trace_k4")  # the same on an instance with k = 4
+        if Path("results/glr_trace/instance3.json").exists():
+            fig2([3], "fig2_glr_trace_k4")  # the same on an instance with k = 4
     if "fig3" in targets:
         fig3()
     if "fig4" in targets:
         fig4()
     if "fig5" in targets:
         fig5()
-    md = []
     if "tightness" in targets:
         fig_tightness()
-        md += ["## Bound tightness", ""] + tightness_table() + [""]
-    if "tables" in targets:
-        md += simulation_tables()
-    if md:
+    if "tightness" in targets or "tables" in targets:
+        # tables.md always gets every table, so drawing one figure never drops the others
+        md = ["## Bound tightness", ""] + tightness_table() + [""] + simulation_tables()
         Path(FIG_DIR).mkdir(exist_ok=True)
         with open(FIG_DIR + "tables.md", "w") as f:
             f.write("\n".join(md) + "\n")

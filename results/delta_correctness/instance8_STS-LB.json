@@ -1,5 +1,5 @@
 {
- "instance": 22,
+ "instance": 8,
  "algorithm": "STS-LB",
  "confidence": 0.1,
  "mode": {

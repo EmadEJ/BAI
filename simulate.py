@@ -11,9 +11,10 @@ from io_utils import *
 from environment import *
 
 # Usage:
-#   python simulate.py --algorithm STS-LB --instance_index 11 --runs 100 --jobs 8
-#   python simulate.py --algorithm STS-LB ASTS --instance_index 11 12 --runs 100 --jobs 8
-# The result file results/simulation/instance11_STS-LB.json keeps one entry per run (seed = run index),
+#   python simulate.py                     (one run of GTS-Unknown (LB) on the sample instance 0)
+#   python simulate.py --algorithm STS-LB --instance_index 4 --runs 100 --jobs 8
+#   python simulate.py --algorithm STS-LB ASTS --instance_index 4 5 --runs 100 --jobs 8
+# The result file results/simulation/instance4_STS-LB.json keeps one entry per run (seed = run index),
 # so running the same command again only runs the missing seeds. All the runs of a command share one pool.
 
 SLOW_FIRST = ["STS-Plain", "MuSTS", "STS-LB", "SGTS", "ASTS"]  # the order in which the runs are started

@@ -11,6 +11,25 @@ source .venv/bin/activate
 pip install -r requirements.txt
 ```
 
+## Instances
+
+`instances/instance{i}.json` holds `n`, `k`, `confidence` (delta), `mus` and `A`. `A` is given row by row: one row per
+arm, with the probabilities of the k contexts (the transpose of the k x n matrix of the paper).
+
+| index | n, k, delta | used for |
+|---|---|---|
+| 0 | 3, 2, 1e-2 | a small sample instance, the default of the scripts (every algorithm stops within a minute) |
+| 1 | 3, 2, 1e-6 | figure 2, left |
+| 2 | 3, 3, 1e-6 | figure 2, right |
+| 3 | 3, 4, 1e-6 | the same trace with k = 4 (`fig2_glr_trace_k4`) |
+| 4 | 3, 2, 1e-3 | eq. (16), figure 3 |
+| 5 | 3, 2, 1e-3 | eq. (17), figure 3 |
+| 6 | 3, 3, 1e-3 | eq. (42), figure 4 |
+| 7, 8 | 3, 2, 1e-3 | delta-correctness check (run with delta = 0.1), easier versions of instances 4 and 5 |
+| 10 n + k | n, k, 1e-3 | figure 5: 32, 33, 34, 62, 63, 64, 92, 93, 94, 122, 123, 124 |
+
+Instances 1, 2, 4, 5 and 6 are also the main instances of the bound tightness table.
+
 ## The code
 
 | file | content |
@@ -21,7 +40,7 @@ pip install -r requirements.txt
 | `environment.py` | the bandit and the run loop (`Environment.run`) |
 | `utils.py` | `C_exp` of [KK21] and `W_bar` of [TD25a] used in the thresholds |
 | `simulate.py` | many runs of one algorithm on one instance (figures 3, 5 and the delta-correctness check) |
-| `glr_trace.py` | figure 2 (instances 13 and 14, delta = 1e-6), and the same on instance 15 (k = 4) |
+| `glr_trace.py` | figure 2 (instances 1 and 2), and the same on instance 3 (k = 4) |
 | `heatmaps.py` | figure 4 |
 | `bound_tightness.py` | the table and figure comparing the bounds with the true GLR |
 | `plot.py` | all figures and tables from the stored results |
@@ -54,41 +73,41 @@ JOBS=32 ./run_all.sh fig5   # figure 5, 20 runs per algorithm
 python plot.py all          # figures/ and figures/tables.md
 ```
 
-Single experiments:
+Single experiments (without arguments, `simulate.py`, `glr_trace.py` and `heatmaps.py` run on the sample instance 0):
 
 ```bash
-python simulate.py --algorithm STS-LB --instance_index 11 --runs 100 --jobs 8
+python simulate.py                                                  # one run of GTS-Unknown (LB) on instance 0
+python simulate.py --algorithm STS-LB --instance_index 4 --runs 100 --jobs 8
 python simulate.py --algorithm ASTS SGTS --instance_index 32 33 --runs 20 --jobs 8
-python simulate.py --algorithm ASTS --instance_index 21 --runs 200 --delta 0.1 --out_dir results/delta_correctness/ --jobs 8
-python glr_trace.py --instance_index 14 --log_period 50 --jobs 8
-python heatmaps.py --instance_index 10 --div 61 --jobs 8
+python simulate.py --algorithm ASTS --instance_index 7 --runs 200 --delta 0.1 --out_dir results/delta_correctness/ --jobs 8
+python glr_trace.py --instance_index 2 --log_period 50 --jobs 8
+python heatmaps.py --instance_index 6 --div 61 --jobs 8
 python bound_tightness.py --jobs 8
 python optimization.py -n 2 -k 3 --fixed_w --name plain   # checks the GLR solver against the grid search of testsets/
 ```
 
-`simulate.py` also takes several algorithms and instances (`--algorithm STS-LB ASTS --instance_index 11 12`), all
+`simulate.py` also takes several algorithms and instances (`--algorithm STS-LB ASTS --instance_index 4 5`), all
 their missing runs then share one pool, the slowest algorithm first. Do not run the same (instance, algorithm) in two
 commands at the same time: both would write the same result file. To stop the runs, use Ctrl-C (or
 `pkill -f simulate.py`; on macOS the workers are `multiprocessing.spawn` processes and need to be killed too).
 
 ### Figure 2 on another instance
 
-1. Write `instances/instance16.json` (any unused number), with `"A"` given row by row: one row per arm, with the k
-   probabilities of the contexts (the transpose of the paper's k x n matrix). All entries must be positive, the rows sum
-   to 1, `"mus"` is in [0, 1] and the best arm is unique. `"confidence"` is delta.
+1. Write `instances/instance9.json` (any unused number, see [Instances](#instances) for the format). All entries of `A`
+   must be positive, its rows sum to 1, `"mus"` is in [0, 1] and the best arm is unique.
 2. Run the trace, then draw it (the paper figure `fig2_glr_trace` is not touched):
 
 ```bash
-python glr_trace.py --instance_index 16 --log_period 20 --jobs 8
-python plot.py fig2 16          # figures/fig2_glr_trace_16.pdf, or "fig2 16 17" for two panels
+python glr_trace.py --instance_index 9 --log_period 20 --jobs 8
+python plot.py fig2 9           # figures/fig2_glr_trace_9.pdf, or "fig2 9 1" for two panels
 ```
 
 `glr_trace.py` prints when each statistic crosses each threshold. The run continues until both lower bounds crossed the
 naive threshold, so a harder instance (smaller gap, smaller delta) runs longer; keep about 1000 to 2000 logged rounds
 with `--log_period` (the run length divided by 1500). `--delta` overrides the delta of the instance, `--seed` changes
 the sample path, and `--reference_starts` (20 by default) is the number of random starting points of the true GLR for
-k >= 3 (for k = 2 it is the exact closed form). With 8 cores it takes about 1.5 min for instance 13 (k = 2), 1 min for
-instance 14 (k = 3) and 5 min for instance 15 (k = 4, with `--reference_starts 100`).
+k >= 3 (for k = 2 it is the exact closed form). With 8 cores it takes about 1.5 min for instance 1 (k = 2), 1 min for
+instance 2 (k = 3) and 5 min for instance 3 (k = 4, with `--reference_starts 100`).
 
 ### Expected runtimes
 

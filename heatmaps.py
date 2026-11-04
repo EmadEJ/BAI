@@ -15,8 +15,8 @@ from algorithms.MuSTS import MuSTS
 from algorithms.SGTS import SGTS
 
 # Figure 4: F(w) over the simplex for the four levels of prior knowledge (n = 3)
-#   python heatmaps.py --instance_index 10 --div 61 --jobs 8
-# Writes results/heatmaps/instance10.json
+#   python heatmaps.py --instance_index 6 --div 61 --jobs 8
+# Writes results/heatmaps/instance6.json
 
 OUT_DIR = "results/heatmaps/"
 
@@ -41,7 +41,7 @@ def unknown_F(job):
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
-    parser.add_argument("--instance_index", type=int, default=10)
+    parser.add_argument("--instance_index", type=int, default=0)
     parser.add_argument("--div", type=int, default=61)
     parser.add_argument("--jobs", type=int, default=1)
     args = parser.parse_args()

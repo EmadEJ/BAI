@@ -1,7 +1,7 @@
 [
  {
   "family": "paper",
-  "instance": 13,
+  "instance": 1,
   "name": "Fig. 2a",
   "mu": [
    0.4506389335501976,
@@ -55,7 +55,7 @@
  },
  {
   "family": "paper",
-  "instance": 14,
+  "instance": 2,
   "name": "Fig. 2b",
   "mu": [
    0.5807827359022586,
@@ -113,7 +113,7 @@
  },
  {
   "family": "paper",
-  "instance": 11,
+  "instance": 4,
   "name": "Eq. (16)",
   "mu": [
    0.9,
@@ -167,7 +167,7 @@
  },
  {
   "family": "paper",
-  "instance": 12,
+  "instance": 5,
   "name": "Eq. (17)",
   "mu": [
    0.4,
@@ -221,7 +221,7 @@
  },
  {
   "family": "paper",
-  "instance": 10,
+  "instance": 6,
   "name": "Eq. (42)",
   "mu": [
    0.9,

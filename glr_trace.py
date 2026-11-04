@@ -14,12 +14,12 @@ from optimization import optimize_GLR, reference_GLR
 from lowerbound import L_bound, L_naive, proven_factor
 
 # Figure 2: the statistics along one run of GTS-Unknown (LB) on an instance
-#   python glr_trace.py --instance_index 13 --log_period 20 --jobs 8
+#   python glr_trace.py --instance_index 1 --log_period 20 --jobs 8
 # The sampling rule of GTS-Unknown (LB) keeps running after its stopping time, until L and L_naive have also crossed
 # the naive threshold (plus a margin), so that every stopping time is on the plot. The run is logged every log_period
 # rounds, then at every logged round we compute the plain solver GLR, the reference (true) GLR, L, L_naive, the proven
 # upper zone of L and both thresholds.
-# Writes results/glr_trace/instance13.json
+# Writes results/glr_trace/instance1.json
 
 OUT_DIR = "results/glr_trace/"
 
@@ -48,7 +48,7 @@ def statistics(job):
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
-    parser.add_argument("--instance_index", type=int, required=True)
+    parser.add_argument("--instance_index", type=int, default=0)
     parser.add_argument("--log_period", type=int, default=10)
     parser.add_argument("--seed", type=int, default=0)
     parser.add_argument("--delta", type=float, default=None)

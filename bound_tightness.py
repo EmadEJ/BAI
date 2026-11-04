@@ -18,7 +18,7 @@ from lowerbound import L_bound, L_naive, proven_factor, variance, optimal_w
 # instances).
 
 OUT_DIR = "results/bound_tightness/"
-MAIN_INSTANCES = {13: "Fig. 2a", 14: "Fig. 2b", 11: "Eq. (16)", 12: "Eq. (17)", 10: "Eq. (42)"}
+MAIN_INSTANCES = {1: "Fig. 2a", 2: "Fig. 2b", 4: "Eq. (16)", 5: "Eq. (17)", 6: "Eq. (42)"}
 ALPHAS = [0.3, 1.0, 3.0]  # concentration of the Dirichlet distribution of the rows of A
 HARD_EPS = [0.3, 0.1, 0.03, 0.01, 0.003, 0.001]
 PROP5_EPS = [1e-2, 1e-4, 1e-6, 1e-9, 1e-12]
