@@ -1,11 +1,12 @@
 from utils import *
 from optimization import optimize, optimize_GLR
-from lowerbound import L_bound, optimal_w as lowerbound_optimal_w
+from lowerbound import L_bound, L_naive, optimal_w as lowerbound_optimal_w
 from algorithms.TS import TS
 import itertools
 
 # general Separator Track and Stop (GTS-Unknown)
 # glr="lb":    stops on min_i L_i(t) > beta(t, delta) and tracks the maximizer of the lower bound (convex)
+# glr="naive": the same with the Pinsker bound L_naive in place of L
 # glr="plain": a local solver of the non-convex GLR for both, which only gives an upper bound of the GLR
 #              (for k = 2 the GLR has a closed form, which gives the same value as the solver much faster)
 class STS(TS):
@@ -60,6 +61,8 @@ class STS(TS):
         A_hat = self.get_A_hat()
         if self.glr == "lb":
             return np.min(L_bound(mu_hat, A_hat, self.N_A, self.N_Z))
+        if self.glr == "naive":
+            return np.min(L_naive(mu_hat, A_hat, self.N_A, self.N_Z))
         return optimize_GLR(mu_hat, A_hat, self.N_A, self.N_Z, alg=self.glr_alg)[0]
 
     def beta_t_mu(self, delta):
@@ -104,9 +107,9 @@ class STS(TS):
         A_hat = self.get_A_hat()
         self.n_optimizations += 1
 
-        if self.glr == "lb":
+        if self.glr in ["lb", "naive"]:
             try:
-                _, w_star = lowerbound_optimal_w(mu_hat, A_hat)
+                _, w_star = lowerbound_optimal_w(mu_hat, A_hat, bound="L" if self.glr == "lb" else "naive")
             except Exception as e:
                 print("Optimization failed:", e)
                 self.optimization_failed_number_of_rounds += 1

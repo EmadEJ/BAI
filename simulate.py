@@ -17,7 +17,7 @@ from environment import *
 # The result file results/simulation/instance4_STS-LB.json keeps one entry per run (seed = run index),
 # so running the same command again only runs the missing seeds. All the runs of a command share one pool.
 
-SLOW_FIRST = ["STS-Plain", "MuSTS", "STS-LB", "SGTS", "ASTS"]  # the order in which the runs are started
+SLOW_FIRST = ["STS-Plain", "MuSTS", "STS-LB", "STS-LB-Naive", "SGTS", "ASTS"]  # the order in which the runs are started
 
 
 def single_run(job):

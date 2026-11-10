@@ -12,6 +12,7 @@ ALGORITHMS = {
     "ASTS": r"GTS-$\mathcal{A}$",
     "MuSTS": r"GTS-$\mu$",
     "STS-LB": "GTS-Unknown (LB)",
+    "STS-LB-Naive": "GTS-Unknown (LB_Naive)",
     "STS-Plain": "GTS-Unknown (solver)",
     "SGTS": "GTS-SG",
 }
@@ -45,6 +46,8 @@ class Environment:
     def make_algorithm(self, algorithm, confidence, tracking, mode):
         if algorithm == "STS-LB":
             return STS(self.n, self.k, confidence, tracking, mode, glr="lb")
+        if algorithm == "STS-LB-Naive":
+            return STS(self.n, self.k, confidence, tracking, mode, glr="naive")
         if algorithm == "STS-Plain":
             return STS(self.n, self.k, confidence, tracking, mode, glr="plain")
         if algorithm == "ASTS":

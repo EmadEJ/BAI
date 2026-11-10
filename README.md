@@ -22,6 +22,7 @@ arm, with the probabilities of the k contexts (the transpose of the k x n matrix
 | 1 | 3, 2, 1e-6 | figure 2, left |
 | 2 | 3, 3, 1e-6 | figure 2, right |
 | 3 | 3, 4, 1e-6 | the same trace with k = 4 (`fig2_glr_trace_k4`) |
+| 9 | 3, 2, 1e-6 | the same trace where the plotted plain solver stays above the true GLR (`fig2_glr_trace_solver_miss`) |
 | 4 | 3, 2, 1e-3 | eq. (16), figure 3 |
 | 5 | 3, 2, 1e-3 | eq. (17), figure 3 |
 | 6 | 3, 3, 1e-3 | eq. (42), figure 4 |
@@ -36,9 +37,9 @@ rows of `A` drawn by `utils.context_initiator(n, k, "random")` and `mus` uniform
 
 | file | content |
 |---|---|
-| `lowerbound.py` | the closed-form lower bounds `L_bound` (Theorem 1 of the bound report) and `L_naive` (Proposition 6), the proven factors (Theorems 2-3), and the convex sampling rule `optimal_w` |
-| `optimization.py` | the non-convex GLR: `plain_GLR` (local solver from a few starting points), `exact_GLR_k2` (closed form for k = 2), `reference_GLR` (exact for k = 2, 20 random starting points otherwise, our "true value"), and the w-optimization `optimize_bfgs` |
-| `algorithms/` | `ASTS` (GTS-A), `MuSTS` (GTS-mu), `STS` (GTS-Unknown, `glr="lb"` or `glr="plain"`), `SGTS` (GTS-SG); `TS.py` has the tracking rules |
+| `lowerbound.py` | the closed-form lower bounds `L_bound` (`L_i^new`, Theorem 1 of the bound report `new_simple_bound.pdf`) and `L_naive` (the Pinsker bound, eq. (26)), the proven factors of `L_bound` (Theorems 2-3), and the convex sampling rule `optimal_w` |
+| `optimization.py` | the non-convex GLR: `plain_GLR` (local solver from a few starting points, `context_start=False` drops the second deterministic one), `exact_GLR_k2` (closed form for k = 2), `reference_GLR` (exact for k = 2, 20 random starting points otherwise, our "true value"), and the w-optimization `optimize_bfgs` |
+| `algorithms/` | `ASTS` (GTS-A), `MuSTS` (GTS-mu), `STS` (GTS-Unknown, `glr="lb"`, `glr="naive"` or `glr="plain"`), `SGTS` (GTS-SG); `TS.py` has the tracking rules |
 | `environment.py` | the bandit and the run loop (`Environment.run`) |
 | `utils.py` | `C_exp` of [KK21] and `W_bar` of [TD25a] used in the thresholds |
 | `simulate.py` | many runs of one algorithm on one instance (figures 3, 5 and the delta-correctness check) |
@@ -54,13 +55,14 @@ Algorithm names used on the command line and in the result files:
 |---|---|---|---|
 | `ASTS` | GTS-A | exact GLR (A known) | exact (convex) |
 | `MuSTS` | GTS-mu | exact GLR (mu known) | Appendix F.1 |
-| `STS-LB` | GTS-Unknown (LB) | `min_i L_i(t) > beta(t, delta)` | maximizer of `w -> min_i L_i(w, A w)` (convex) |
+| `STS-LB` | GTS-Unknown (LB) | `min_i L_i^new(t) > beta(t, delta)` | maximizer of `w -> min_i L_i^new(w, A w)` (convex) |
+| `STS-LB-Naive` | GTS-Unknown (LB_Naive) | `min_i L_naive_i(t) > beta(t, delta)` | maximizer of `w -> min_i L_naive_i(w, A w)` (convex), only in figure 5 |
 | `STS-Plain` | GTS-Unknown (solver) | plain solver of the GLR (an upper bound, not provably delta-correct); the closed form for k = 2 | the same GLR inside BFGS |
 | `SGTS` | GTS-SG | sub-Gaussian GLR, threshold of [TD25a] | exact (convex) |
 
 All algorithms recompute the optimal `w` only every `10^(d-2)` rounds once `t` has `d` digits (`--no_fast` turns this
 off). `STS-Plain` also checks its (expensive) stopping rule only once every `t/100` rounds, which can only delay
-stopping by at most 1%. `STS-LB` checks its closed-form stopping rule at every round.
+stopping by at most 1%. `STS-LB` and `STS-LB-Naive` check their closed-form stopping rule at every round.
 
 ## Running the experiments
 
@@ -98,20 +100,22 @@ commands at the same time: both would write the same result file. To stop the ru
 
 ### Figure 2 on another instance
 
-1. Write `instances/instance9.json` (any unused number, see [Instances](#instances) for the format). All entries of `A`
+1. Write `instances/instance10.json` (any unused number, see [Instances](#instances) for the format). All entries of `A`
    must be positive, its rows sum to 1, `"mus"` is in [0, 1] and the best arm is unique.
 2. Run the trace, then draw it (the paper figure `fig2_glr_trace` is not touched):
 
 ```bash
-python glr_trace.py --instance_index 9 --log_period 20 --jobs 8
-python plot.py fig2 9           # figures/fig2_glr_trace_9.pdf, or "fig2 9 1" for two panels
+python glr_trace.py --instance_index 10 --log_period 20 --jobs 8
+python plot.py fig2 10          # figures/fig2_glr_trace_10.pdf, or "fig2 10 1" for two panels
 ```
 
 `glr_trace.py` prints when each statistic crosses each threshold. The run continues until both lower bounds crossed the
 naive threshold, so a harder instance (smaller gap, smaller delta) runs longer; keep about 1000 to 2000 logged rounds
 with `--log_period` (the run length divided by 1500). `--delta` overrides the delta of the instance, `--seed` changes
 the sample path, and `--reference_starts` (20 by default) is the number of random starting points of the true GLR for
-k >= 3 (for k = 2 it is the exact closed form). With 8 cores it takes about 1.5 min for instance 1 (k = 2), 1 min for
+k >= 3 (for k = 2 it is the exact closed form). The plotted plain solver is weaker than the one of `STS-Plain`: it
+starts from `B = A` and `--plain_starts` (3 by default) random points, without the start at the best `B` for
+`lambda = mu`, so with k = 2 it can stay above the true GLR (instance 9). With 8 cores it takes about 1.5 min for instance 1 (k = 2), 1 min for
 instance 2 (k = 3) and 5 min for instance 3 (k = 4, with `--reference_starts 100`).
 
 ### Expected runtimes
@@ -121,7 +125,7 @@ has the measured time of every stored run.
 
 | algorithm | time per run | |
 |---|---|---|
-| `ASTS`, `SGTS`, `STS-LB` | 1 s to 1.5 min | negligible |
+| `ASTS`, `SGTS`, `STS-LB`, `STS-LB-Naive` | 1 s to 1.5 min | negligible |
 | `MuSTS` | 0.5 to 8 min | |
 | `STS-Plain`, k = 2 | seconds (closed-form GLR) | |
 | `STS-Plain`, k >= 3 | 35 min (instance 33) to about 4 h (instance 124) | 97% of it is the optimization of `w` |
