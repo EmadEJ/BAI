@@ -56,7 +56,7 @@ Algorithm names used on the command line and in the result files:
 | `ASTS` | GTS-A | exact GLR (A known) | exact (convex) |
 | `MuSTS` | GTS-mu | exact GLR (mu known) | Appendix F.1 |
 | `STS-LB` | GTS-Unknown (LB) | `min_i L_i^new(t) > beta(t, delta)` | maximizer of `w -> min_i L_i^new(w, A w)` (convex) |
-| `STS-LB-Naive` | GTS-Unknown (LB_Naive) | `min_i L_naive_i(t) > beta(t, delta)` | maximizer of `w -> min_i L_naive_i(w, A w)` (convex), only in figure 5 |
+| `STS-LB-Naive` | GTS-Unknown (LB_Naive) | `min_i L_naive_i(t) > beta(t, delta)` | maximizer of `w -> min_i L_naive_i(w, A w)` (convex), only in figures 3 and 5 |
 | `STS-Plain` | GTS-Unknown (solver) | plain solver of the GLR (an upper bound, not provably delta-correct); the closed form for k = 2 | the same GLR inside BFGS |
 | `SGTS` | GTS-SG | sub-Gaussian GLR, threshold of [TD25a] | exact (convex) |
 

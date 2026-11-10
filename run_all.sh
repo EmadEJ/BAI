@@ -34,7 +34,7 @@ if wants light; then
     $PYTHON -u heatmaps.py --instance_index 6 --div 61 --jobs $JOBS > logs/heatmaps_6.log 2>&1
 fi
 if wants fig3; then
-    run_simulations "4 5" 100 "" fig3
+    run_simulations "4 5" 100 "" fig3 "$ALGORITHMS STS-LB-Naive"
 fi
 if wants delta; then
     run_simulations "7 8" 200 "--delta 0.1 --out_dir results/delta_correctness/" delta

@@ -22,8 +22,7 @@ FIG5_N, FIG5_K = [3, 6, 9, 12], [2, 3, 4]  # instance index is 10 n + k
 FIG5_INSTANCES = [10 * n + k for n in FIG5_N for k in FIG5_K]
 DELTA_DIR = "results/delta_correctness/"
 
-ORDER = ["ASTS", "MuSTS", "STS-LB", "STS-LB-Naive", "STS-Plain", "SGTS"]  # figure 5
-FIG3_ORDER = [alg for alg in ORDER if alg != "STS-LB-Naive"]
+ORDER = ["ASTS", "MuSTS", "STS-LB", "STS-LB-Naive", "STS-Plain", "SGTS"]
 SHORT_LABELS = {
     "ASTS": r"GTS-$\mathcal{A}$",
     "MuSTS": r"GTS-$\mu$",
@@ -152,8 +151,8 @@ def compact_number(x, pos=None):
     return f"{x:g}"
 
 
-def sample_complexity_panel(ax, index, show_labels=True, order=ORDER):
-    Ts = [np.array([run['T'] for run in load_runs(index, alg)]) for alg in order]
+def sample_complexity_panel(ax, index, show_labels=True):
+    Ts = [np.array([run['T'] for run in load_runs(index, alg)]) for alg in ORDER]
     positions = [p for p, T in enumerate(Ts) if len(T)]
     if not positions:
         return
@@ -162,7 +161,7 @@ def sample_complexity_panel(ax, index, show_labels=True, order=ORDER):
                      showmeans=True, meanprops=dict(marker="D", markerfacecolor="white", markeredgecolor="k", markersize=3.5),
                      medianprops=dict(color="k", lw=1.0), whiskerprops=dict(lw=0.8), capprops=dict(lw=0.8))
     for patch, p in zip(box['boxes'], positions):
-        patch.set_facecolor(COLORS[order[p]])
+        patch.set_facecolor(COLORS[ORDER[p]])
         patch.set_alpha(0.75)
         patch.set_linewidth(0.8)
     rng = np.random.default_rng(0)
@@ -172,13 +171,13 @@ def sample_complexity_panel(ax, index, show_labels=True, order=ORDER):
     ax.yaxis.set_major_locator(matplotlib.ticker.LogLocator(base=10, subs=(1.0, 2.0, 5.0)))
     ax.yaxis.set_major_formatter(matplotlib.ticker.FuncFormatter(compact_number))
     ax.yaxis.set_minor_formatter(matplotlib.ticker.NullFormatter())
-    ax.set_xticks(range(len(order)))
-    ax.set_xticklabels([SHORT_LABELS[alg] for alg in order] if show_labels else [])
+    ax.set_xticks(range(len(ORDER)))
+    ax.set_xticklabels([SHORT_LABELS[alg] for alg in ORDER] if show_labels else [])
     ax.grid(axis="x", visible=False)
 
 
-def algorithm_legend(fig, ax=None, ncol=5, order=ORDER):
-    handles = [Patch(facecolor=COLORS[alg], alpha=0.75, edgecolor="k", lw=0.6, label=ALGORITHMS[alg]) for alg in order]
+def algorithm_legend(fig, ax=None, ncol=3):
+    handles = [Patch(facecolor=COLORS[alg], alpha=0.75, edgecolor="k", lw=0.6, label=ALGORITHMS[alg]) for alg in ORDER]
     handles.append(Line2D([], [], marker="D", ls="", markerfacecolor="white", markeredgecolor="k", markersize=3.5, label="mean"))
     if ax is None:
         fig.legend(handles=handles, loc="lower center", ncol=ncol + 1, bbox_to_anchor=(0.5, -0.01), columnspacing=1.2)
@@ -189,11 +188,11 @@ def algorithm_legend(fig, ax=None, ncol=5, order=ORDER):
 def fig3():
     fig, axes = plt.subplots(1, len(FIG3_INSTANCES), figsize=(DOUBLE, 2.4))
     for ax, (index, title) in zip(axes, FIG3_INSTANCES.items()):
-        sample_complexity_panel(ax, index, show_labels=False, order=FIG3_ORDER)
+        sample_complexity_panel(ax, index, show_labels=False)
         ax.set_title(title)
     axes[0].set_ylabel("Sample complexity")
-    fig.tight_layout(rect=(0, 0.08, 1, 1))
-    algorithm_legend(fig, order=FIG3_ORDER)
+    fig.tight_layout(rect=(0, 0.16, 1, 1))
+    algorithm_legend(fig)
     save(fig, "fig3_sample_complexity")
 
 
@@ -208,7 +207,7 @@ def fig5():
     for ax in axes[:, 0]:
         ax.set_ylabel("Sample complexity")
     fig.tight_layout(rect=(0, 0.06, 1, 1))
-    algorithm_legend(fig, ncol=3)
+    algorithm_legend(fig)
     save(fig, "fig5_sample_complexity")
 
 
