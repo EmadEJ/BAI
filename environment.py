@@ -11,9 +11,9 @@ from utils import *
 ALGORITHMS = {
     "ASTS": r"GTS-$\mathcal{A}$",
     "MuSTS": r"GTS-$\mu$",
-    "STS-LB": "GTS-Unknown (LB)",
-    "STS-LB-Naive": "GTS-Unknown (LB_Naive)",
-    "STS-Plain": "GTS-Unknown (solver)",
+    "STS-LB": "GTS-Unknown (ours)",
+    "STS-LB-Naive": "GTS-Unknown (Naive)",
+    "STS-Plain": "GTS-Unknown (solver)",  # no guarantee, not in the figures
     "SGTS": "GTS-SG",
 }
 

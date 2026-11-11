@@ -106,10 +106,9 @@ def optimal_A(mu, A, w, mu_p, s, solver=None, slack=0):
 
 ############################## GLR Optimization
 
-def plain_GLR_pair(mu, A, N_A, N_Z, s, n_random=3, context_start=True, method="BFGS", rng=None):
+def plain_GLR_pair(mu, A, N_A, N_Z, s, n_random=3, method="BFGS", rng=None):
     # local solver over the context distributions (B_{i_star}, B_s) = softmax(x), the rewards are solved exactly
-    # by optimal_mu. Starts from B = A, from the best B for lambda = mu (if context_start), and from n_random random
-    # points. Without context_start the solver can miss the alternatives that move B rather than lambda (k = 2).
+    # by optimal_mu. Starts from B = A, from the best B for lambda = mu, and from n_random random points.
     n, k = A.shape
     i_star, _ = best_arm(mu, A)
     rng = np.random if rng is None else rng
@@ -130,10 +129,8 @@ def plain_GLR_pair(mu, A, N_A, N_Z, s, n_random=3, context_start=True, method="B
         grad_s = N_A[s] * (B_s - A[s]) + B_s * (g - B_s @ g)
         return result, np.concatenate((grad_star, grad_s))
 
-    starts = [np.concatenate((log_A_star, log_A_s))]
-    if context_start:
-        A0 = optimal_A(mu, A, N_A, np.clip(mu, 0, 1), s)
-        starts.append(np.log(np.concatenate((A0[i_star], A0[s]))))
+    A0 = optimal_A(mu, A, N_A, np.clip(mu, 0, 1), s)
+    starts = [np.concatenate((log_A_star, log_A_s)), np.log(np.concatenate((A0[i_star], A0[s])))]
     starts += [np.log(rng.dirichlet(np.ones(k), size=2)).ravel() for _ in range(n_random)]
 
     best = None
@@ -160,7 +157,7 @@ def plain_GLR_pair(mu, A, N_A, N_Z, s, n_random=3, context_start=True, method="B
     return obj * scale, mu_p, A_p
 
 
-def plain_GLR(mu, A, N_A, N_Z, n_random=3, context_start=True, verbose=False):
+def plain_GLR(mu, A, N_A, N_Z, n_random=3, verbose=False):
     n, k = A.shape
     i_star, _ = best_arm(mu, A)
 
@@ -168,7 +165,7 @@ def plain_GLR(mu, A, N_A, N_Z, n_random=3, context_start=True, verbose=False):
     for s in range(n):
         if s == i_star:
             continue
-        obj, mu_p, A_p = plain_GLR_pair(mu, A, N_A, N_Z, s, n_random=n_random, context_start=context_start)
+        obj, mu_p, A_p = plain_GLR_pair(mu, A, N_A, N_Z, s, n_random=n_random)
         if obj < obj_star:
             obj_star, mu_star, A_star = obj, mu_p, A_p
     return obj_star, mu_star, A_star

@@ -16,22 +16,22 @@ from environment import ALGORITHMS
 # The figures go to figures/ (pdf + png), the tables to figures/tables.md and figures/*.tex
 
 FIG_DIR = "figures/"
-FIG2_INSTANCES = [1, 2]
+FIG2_INSTANCES = [1, 2, 3]  # k = 2, 3, 4
 FIG3_INSTANCES = {4: "Instance (16)", 5: "Instance (17)"}
 FIG5_N, FIG5_K = [3, 6, 9, 12], [2, 3, 4]  # instance index is 10 n + k
 FIG5_INSTANCES = [10 * n + k for n in FIG5_N for k in FIG5_K]
 DELTA_DIR = "results/delta_correctness/"
 
-ORDER = ["ASTS", "MuSTS", "STS-LB", "STS-LB-Naive", "STS-Plain", "SGTS"]
+ORDER = ["ASTS", "MuSTS", "STS-LB", "STS-LB-Naive", "SGTS"]  # STS-Plain (the solver) has no guarantee
 SHORT_LABELS = {
     "ASTS": r"GTS-$\mathcal{A}$",
     "MuSTS": r"GTS-$\mu$",
-    "STS-LB": "GTS-Unknown\n(LB)",
-    "STS-LB-Naive": "GTS-Unknown\n(LB_Naive)",
+    "STS-LB": "GTS-Unknown\n(ours)",
+    "STS-LB-Naive": "GTS-Unknown\n(Naive)",
     "STS-Plain": "GTS-Unknown\n(solver)",
     "SGTS": "GTS-SG",
 }
-TABLE_NAMES = {"ASTS": "GTS-A", "MuSTS": "GTS-mu", "STS-LB": "GTS-Unknown (LB)", "STS-LB-Naive": "GTS-Unknown (LB_Naive)", "STS-Plain": "GTS-Unknown (solver)", "SGTS": "GTS-SG"}
+TABLE_NAMES = {"ASTS": "GTS-A", "MuSTS": "GTS-mu", "STS-LB": "GTS-Unknown (ours)", "STS-LB-Naive": "GTS-Unknown (Naive)", "STS-Plain": "GTS-Unknown (solver)", "SGTS": "GTS-SG"}
 # Okabe-Ito colors, the same color for an algorithm and for the statistic it uses
 COLORS = {
     "ASTS": "#0072B2",
@@ -41,7 +41,7 @@ COLORS = {
     "STS-Plain": "#CC79A7",
     "SGTS": "#8C8C8C",
 }
-C_L, C_NAIVE, C_PLAIN, C_BETA = "#D55E00", "#56B4E9", "#CC79A7", "#332288"
+C_L, C_NAIVE, C_BETA = "#D55E00", "#56B4E9", "#332288"
 SINGLE, DOUBLE = 3.25, 6.75  # AISTATS column widths in inches
 
 
@@ -84,11 +84,13 @@ def load_runs(index, algorithm, out_dir="results/simulation/"):
 
 ############################## figure 2
 
-def fig2(instances=FIG2_INSTANCES, name="fig2_glr_trace"):
-    # the whole run on a linear scale, cut a bit above the naive threshold so that both thresholds are visible
+def fig2(instances=FIG2_INSTANCES, name="fig2_glr_trace", log=False):
+    # the whole run, on a linear scale cut a bit above the naive threshold so that both thresholds are visible, or on a
+    # log scale. The vertical lines are the stopping times of the methods: the true GLR and L stop at our beta,
+    # L_naive at the naive beta.
     fig, axes = plt.subplots(1, len(instances), figsize=(DOUBLE if len(instances) > 1 else 4.2, 2.9), squeeze=False)
     axes = axes[0]
-    statistics = [("reference", "k"), ("L", C_L), ("L_naive", C_NAIVE)]
+    statistics = [("reference", "k", "beta"), ("L", C_L, "beta"), ("L_naive", C_NAIVE, "naive_beta")]
     for ax, index in zip(axes, instances):
         d = load_json(f"results/glr_trace/instance{index}.json")
         if d is None:
@@ -98,46 +100,47 @@ def fig2(instances=FIG2_INSTANCES, name="fig2_glr_trace"):
         upper[~np.isfinite(upper)] = np.nan
         # first round where each statistic is above each threshold
         crossing = {}
-        for key, _ in statistics:
+        for key, _, _ in statistics:
             for beta in ["beta", "naive_beta"]:
                 above = np.nonzero(tr[key] > tr[beta])[0]
                 crossing[key, beta] = above[0] if len(above) else None
 
         ax.fill_between(T, L, upper, color=C_L, alpha=0.13, lw=0)
         ax.plot(T, upper, color=C_L, lw=0.6, alpha=0.5)
-        ax.plot(T, tr['plain'], color=C_PLAIN, lw=2.6, alpha=0.9)
         ax.plot(T, tr['reference'], color="k", ls=(0, (1.2, 1.2)), lw=1.3)
         ax.plot(T, L, color=C_L)
         ax.plot(T, tr['L_naive'], color=C_NAIVE)
         ax.plot(T, tr['beta'], color=C_BETA, lw=1.2)
         ax.plot(T, tr['naive_beta'], color=C_BETA, lw=1.2, ls="--")
-        for key, color in statistics:
+        for key, color, stop_beta in statistics:
             for beta, face in [("beta", color), ("naive_beta", "white")]:
                 j = crossing[key, beta]
                 if j is not None:
                     ax.plot(T[j], tr[beta][j], marker="o", ms=4.5, mfc=face, mec=color, mew=1.1, zorder=5)
-                    if beta == "beta":
+                    if beta == stop_beta:
                         ax.axvline(T[j], color=color, lw=0.6, ls=":", alpha=0.8)
         ax.set_xlim(0, T[-1])
-        ax.set_ylim(0, 1.35 * tr['naive_beta'].max())
+        if log:
+            ax.set_yscale("log")
+            ax.set_ylim(1, 1.5 * np.nanmax(tr['reference']))
+        else:
+            ax.set_ylim(0, 1.35 * tr['naive_beta'].max())
         ax.set_xlabel("Timestep $t$")
         ax.set_title(f"$n={d['n']},\\ k={d['k']},\\ \\delta=10^{{{int(np.log10(d['confidence']))}}}$")
-    axes[0].set_ylabel("statistic")
+    axes[0].set_ylabel("statistic (log scale)" if log else "statistic")
 
     handles = [
-        Line2D([], [], color=C_PLAIN, lw=2.6, label="GLR, plain solver"),
         Line2D([], [], color="k", ls=(0, (1.2, 1.2)), lw=1.3, label="GLR, true value"),
         Line2D([], [], color=C_L, label="$L$ (ours)"),
         Patch(color=C_L, alpha=0.13, label="proven zone of $L$"),
         Line2D([], [], color=C_NAIVE, label=r"$L_{\mathrm{naive}}$"),
         Line2D([], [], color=C_BETA, lw=1.2, label=r"our $\beta$"),
         Line2D([], [], color=C_BETA, lw=1.2, ls="--", label=r"naive $\beta$"),
-        Line2D([], [], marker="o", ls="", mfc="0.4", mec="0.4", ms=4.5, label=r"stops with our $\beta$"),
-        Line2D([], [], marker="o", ls="", mfc="white", mec="0.4", mew=1.1, ms=4.5, label=r"stops with naive $\beta$"),
+        Line2D([], [], marker="o", ls="", mfc="0.4", mec="0.4", ms=4.5, label=r"crosses our $\beta$"),
+        Line2D([], [], marker="o", ls="", mfc="white", mec="0.4", mew=1.1, ms=4.5, label=r"crosses naive $\beta$"),
     ]
-    ncol = 5 if len(instances) > 1 else 3
     fig.tight_layout(rect=(0, 0.11 if len(instances) > 1 else 0.22, 1, 1))
-    fig.legend(handles=handles, loc="lower center", ncol=ncol, bbox_to_anchor=(0.5, -0.005), handlelength=1.6, columnspacing=1.0)
+    fig.legend(handles=handles, loc="lower center", ncol=4, bbox_to_anchor=(0.5, -0.005), handlelength=1.6, columnspacing=1.0)
     save(fig, name)
 
 
@@ -176,7 +179,7 @@ def sample_complexity_panel(ax, index, show_labels=True):
     ax.grid(axis="x", visible=False)
 
 
-def algorithm_legend(fig, ax=None, ncol=3):
+def algorithm_legend(fig, ax=None, ncol=5):
     handles = [Patch(facecolor=COLORS[alg], alpha=0.75, edgecolor="k", lw=0.6, label=ALGORITHMS[alg]) for alg in ORDER]
     handles.append(Line2D([], [], marker="D", ls="", markerfacecolor="white", markeredgecolor="k", markersize=3.5, label="mean"))
     if ax is None:
@@ -191,7 +194,7 @@ def fig3():
         sample_complexity_panel(ax, index, show_labels=False)
         ax.set_title(title)
     axes[0].set_ylabel("Sample complexity")
-    fig.tight_layout(rect=(0, 0.16, 1, 1))
+    fig.tight_layout(rect=(0, 0.08, 1, 1))
     algorithm_legend(fig)
     save(fig, "fig3_sample_complexity")
 
@@ -206,7 +209,7 @@ def fig5():
             ax.set_title(f"$n={n},\\ k={k}$")
     for ax in axes[:, 0]:
         ax.set_ylabel("Sample complexity")
-    fig.tight_layout(rect=(0, 0.06, 1, 1))
+    fig.tight_layout(rect=(0, 0.035, 1, 1))
     algorithm_legend(fig)
     save(fig, "fig5_sample_complexity")
 
@@ -382,6 +385,8 @@ def simulation_tables():
                "| instance | algorithm | delta | runs | errors | error rate | 95% upper bound |", "|---|---|---|---|---|---|---|"]
         for path in sorted(Path(DELTA_DIR).glob("*.json")):
             data = load_json(path)
+            if data['algorithm'] not in ORDER:
+                continue
             runs = data['runs']
             errors = sum(not run['correct'] for run in runs)
             md.append(f"| {data['instance']} | {TABLE_NAMES[data['algorithm']]} | {data['confidence']} | {len(runs)} | {errors} | "
@@ -401,14 +406,11 @@ if __name__ == "__main__":
     fig2_instances = [int(t) for t in targets if t.isdigit()]
     if "all" in targets:
         targets = ["fig2", "fig3", "fig4", "fig5", "tightness", "tables"]
-    if "fig2" in targets and fig2_instances:
-        fig2(fig2_instances, "fig2_glr_trace_" + "_".join(map(str, fig2_instances)))
-    elif "fig2" in targets:
-        fig2()
-        if Path("results/glr_trace/instance3.json").exists():
-            fig2([3], "fig2_glr_trace_k4")  # the same on an instance with k = 4
-        if Path("results/glr_trace/instance9.json").exists():
-            fig2([9], "fig2_glr_trace_solver_miss")  # an instance where the plain solver stays above the true GLR
+    if "fig2" in targets:
+        # figures/fig2_glr_trace.pdf and its log scale version figures/fig2_glr_trace_log.pdf
+        name = "fig2_glr_trace" + "".join(f"_{index}" for index in fig2_instances)
+        fig2(fig2_instances or FIG2_INSTANCES, name)
+        fig2(fig2_instances or FIG2_INSTANCES, name + "_log", log=True)
     if "fig3" in targets:
         fig3()
     if "fig4" in targets:

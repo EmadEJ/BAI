@@ -5,10 +5,12 @@ from algorithms.TS import TS
 import itertools
 
 # general Separator Track and Stop (GTS-Unknown)
-# glr="lb":    stops on min_i L_i(t) > beta(t, delta) and tracks the maximizer of the lower bound (convex)
-# glr="naive": the same with the Pinsker bound L_naive in place of L
+# glr="lb":    GTS-Unknown (ours), stops on min_i L_i(t) > beta(t, delta) and tracks the maximizer of the lower bound
+#              (convex). For k = 2 the GLR has a closed form, which is used for both instead of L.
+# glr="naive": GTS-Unknown (Naive), stops on min_i L_naive_i(t) > naive_beta(t, delta) and tracks the maximizer of
+#              L_naive, for every k
 # glr="plain": a local solver of the non-convex GLR for both, which only gives an upper bound of the GLR
-#              (for k = 2 the GLR has a closed form, which gives the same value as the solver much faster)
+#              (for k = 2 the closed form, which gives the same value as the solver much faster)
 class STS(TS):
     def __init__(self, n, k, confidence, tracking, mode = {'average_w': False, 'fast': True}, glr="lb"):
         super().__init__(n, k, confidence, tracking, mode)
@@ -20,6 +22,7 @@ class STS(TS):
 
         self.glr = glr
         self.glr_alg = "exact_k2" if k == 2 else "plain"
+        self.closed_form = glr == "naive" or (glr == "lb" and k > 2)  # stops and samples with a closed-form bound
         self.last_lambda = 0  # the plain GLR is only recomputed every T/100 rounds
         self.last_check = 0
 
@@ -59,10 +62,10 @@ class STS(TS):
     def lambda_hat(self):
         mu_hat = self.get_mu_hat()
         A_hat = self.get_A_hat()
-        if self.glr == "lb":
-            return np.min(L_bound(mu_hat, A_hat, self.N_A, self.N_Z))
         if self.glr == "naive":
             return np.min(L_naive(mu_hat, A_hat, self.N_A, self.N_Z))
+        if self.closed_form:
+            return np.min(L_bound(mu_hat, A_hat, self.N_A, self.N_Z))
         return optimize_GLR(mu_hat, A_hat, self.N_A, self.N_Z, alg=self.glr_alg)[0]
 
     def beta_t_mu(self, delta):
@@ -91,7 +94,7 @@ class STS(TS):
 
     def stopping_rule(self):
         # returns True if need to stop and are confident enough
-        beta_t = self.beta_t(self.confidence)
+        beta_t = self.naive_beta_t(self.confidence) if self.glr == "naive" else self.beta_t(self.confidence)
         if self.glr == "plain" and self.T - self.last_check < self.T / 100:
             # skipping a check can only delay stopping, so the stopping rule stays valid
             return False, self.last_lambda, beta_t
@@ -107,7 +110,7 @@ class STS(TS):
         A_hat = self.get_A_hat()
         self.n_optimizations += 1
 
-        if self.glr in ["lb", "naive"]:
+        if self.closed_form:
             try:
                 _, w_star = lowerbound_optimal_w(mu_hat, A_hat, bound="L" if self.glr == "lb" else "naive")
             except Exception as e:
