@@ -16,7 +16,7 @@ from environment import ALGORITHMS
 # The figures go to figures/ (pdf + png), the tables to figures/tables.md and figures/*.tex
 
 FIG_DIR = "figures/"
-FIG2_INSTANCES = [1, 2, 3]  # k = 2, 3, 4
+FIG2_INSTANCES = [2, 3]  # k = 3, 4
 FIG3_INSTANCES = {4: "Instance (16)", 5: "Instance (17)"}
 FIG5_N, FIG5_K = [3, 6, 9, 12], [2, 3, 4]  # instance index is 10 n + k
 FIG5_INSTANCES = [10 * n + k for n in FIG5_N for k in FIG5_K]
@@ -86,11 +86,11 @@ def load_runs(index, algorithm, out_dir="results/simulation/"):
 
 def fig2(instances=FIG2_INSTANCES, name="fig2_glr_trace", log=False):
     # the whole run, on a linear scale cut a bit above the naive threshold so that both thresholds are visible, or on a
-    # log scale. The vertical lines are the stopping times of the methods: the true GLR and L stop at our beta,
-    # L_naive at the naive beta.
+    # log scale. Filled circles and vertical lines are the stopping times of the methods (L at our beta, L_naive at the
+    # naive beta), open circles where each bound crosses the other threshold.
     fig, axes = plt.subplots(1, len(instances), figsize=(DOUBLE if len(instances) > 1 else 4.2, 2.9), squeeze=False)
     axes = axes[0]
-    statistics = [("reference", "k", "beta"), ("L", C_L, "beta"), ("L_naive", C_NAIVE, "naive_beta")]
+    statistics = [("L", C_L, "beta"), ("L_naive", C_NAIVE, "naive_beta")]  # bound and the threshold it stops at
     for ax, index in zip(axes, instances):
         d = load_json(f"results/glr_trace/instance{index}.json")
         if d is None:
@@ -113,9 +113,10 @@ def fig2(instances=FIG2_INSTANCES, name="fig2_glr_trace", log=False):
         ax.plot(T, tr['beta'], color=C_BETA, lw=1.2)
         ax.plot(T, tr['naive_beta'], color=C_BETA, lw=1.2, ls="--")
         for key, color, stop_beta in statistics:
-            for beta, face in [("beta", color), ("naive_beta", "white")]:
+            for beta in ["beta", "naive_beta"]:
                 j = crossing[key, beta]
                 if j is not None:
+                    face = color if beta == stop_beta else "white"
                     ax.plot(T[j], tr[beta][j], marker="o", ms=4.5, mfc=face, mec=color, mew=1.1, zorder=5)
                     if beta == stop_beta:
                         ax.axvline(T[j], color=color, lw=0.6, ls=":", alpha=0.8)
@@ -136,8 +137,8 @@ def fig2(instances=FIG2_INSTANCES, name="fig2_glr_trace", log=False):
         Line2D([], [], color=C_NAIVE, label=r"$L_{\mathrm{naive}}$"),
         Line2D([], [], color=C_BETA, lw=1.2, label=r"our $\beta$"),
         Line2D([], [], color=C_BETA, lw=1.2, ls="--", label=r"naive $\beta$"),
-        Line2D([], [], marker="o", ls="", mfc="0.4", mec="0.4", ms=4.5, label=r"crosses our $\beta$"),
-        Line2D([], [], marker="o", ls="", mfc="white", mec="0.4", mew=1.1, ms=4.5, label=r"crosses naive $\beta$"),
+        Line2D([], [], marker="o", ls="", mfc="0.4", mec="0.4", ms=4.5, label="stops"),
+        Line2D([], [], marker="o", ls="", mfc="white", mec="0.4", mew=1.1, ms=4.5, label=r"crosses the other $\beta$"),
     ]
     fig.tight_layout(rect=(0, 0.11 if len(instances) > 1 else 0.22, 1, 1))
     fig.legend(handles=handles, loc="lower center", ncol=4, bbox_to_anchor=(0.5, -0.005), handlelength=1.6, columnspacing=1.0)

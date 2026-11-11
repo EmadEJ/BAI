@@ -27,10 +27,8 @@ TARGETS="$*"
 if wants light; then
     # a few minutes each, also fine on a laptop
     $PYTHON -u bound_tightness.py --jobs $JOBS > logs/bound_tightness.log 2>&1
-    $PYTHON -u glr_trace.py --instance_index 1 --log_period 20 --jobs $JOBS > logs/glr_trace_1.log 2>&1
     $PYTHON -u glr_trace.py --instance_index 2 --log_period 50 --jobs $JOBS > logs/glr_trace_2.log 2>&1
     $PYTHON -u glr_trace.py --instance_index 3 --log_period 50 --reference_starts 100 --jobs $JOBS > logs/glr_trace_3.log 2>&1
-    $PYTHON -u glr_trace.py --instance_index 9 --log_period 20 --jobs $JOBS > logs/glr_trace_9.log 2>&1
     $PYTHON -u heatmaps.py --instance_index 6 --div 61 --jobs $JOBS > logs/heatmaps_6.log 2>&1
 fi
 if wants fig3; then

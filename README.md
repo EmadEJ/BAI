@@ -19,8 +19,8 @@ arm, with the probabilities of the k contexts (the transpose of the k x n matrix
 | index | n, k, delta | used for |
 |---|---|---|
 | 0 | 3, 2, 1e-2 | a small sample instance, the default of the scripts (every algorithm stops within a minute) |
-| 1 | 3, 2, 1e-6 | figure 2, left (k = 2) |
-| 2 | 3, 3, 1e-6 | figure 2, middle (k = 3) |
+| 1 | 3, 2, 1e-6 | a k = 2 instance, not used anymore (was in figure 2) |
+| 2 | 3, 3, 1e-6 | figure 2, left (k = 3) |
 | 3 | 3, 4, 1e-6 | figure 2, right (k = 4) |
 | 4 | 3, 2, 1e-3 | eq. (16), figure 3 |
 | 5 | 3, 2, 1e-3 | eq. (17), figure 3 |
@@ -28,7 +28,7 @@ arm, with the probabilities of the k contexts (the transpose of the k x n matrix
 | 7, 8 | 3, 2, 1e-3 | delta-correctness check (run with delta = 0.1), easier versions of instances 4 and 5 |
 | 10 n + k | n, k, 1e-3 | figure 5: 32, 33, 34, 62, 63, 64, 92, 93, 94, 122, 123, 124 |
 
-The values of instances 0 to 8 have at most 2 decimals. Instances 1, 2, 4, 5 and 6 are also the main instances of the
+The values of instances 0 to 8 have at most 2 decimals. Instances 2, 3, 4, 5 and 6 are also the main instances of the
 bound tightness table. The figure 5 instances have the rows of `A` drawn by `utils.context_initiator(n, k, "random")`
 and `mus` uniform in [0, 1] (instance 124 with `np.random.seed(2)`), and `io_utils.add_instance_to_json` writes a new
 instance file.
@@ -43,7 +43,7 @@ instance file.
 | `environment.py` | the bandit and the run loop (`Environment.run`) |
 | `utils.py` | `C_exp` of [KK21] and `W_bar` of [TD25a] used in the thresholds |
 | `simulate.py` | many runs of one algorithm on one instance (figures 3, 5 and the delta-correctness check) |
-| `glr_trace.py` | figure 2 (instances 1, 2 and 3) |
+| `glr_trace.py` | figure 2 (instances 2 and 3) |
 | `heatmaps.py` | figure 4 |
 | `bound_tightness.py` | the table and figure comparing the bounds with the true GLR |
 | `plot.py` | all figures and tables from the stored results |
@@ -113,9 +113,10 @@ python plot.py fig2 10          # figures/fig2_glr_trace_10.pdf and its log scal
 naive threshold, so a harder instance (smaller gap, smaller delta) runs longer; keep about 1000 to 2000 logged rounds
 with `--log_period` (the run length divided by 1500). `--delta` overrides the delta of the instance, `--seed` changes
 the sample path, and `--reference_starts` (20 by default) is the number of random starting points of the true GLR for
-k >= 3 (for k = 2 it is the exact closed form). On the plot the vertical lines are the stopping times of the methods:
-the true GLR and `L` at our threshold, `L_naive` at the naive threshold. With 8 cores it takes about 1.5 min for instance 1 (k = 2), 1 min for
-instance 2 (k = 3) and 5 min for instance 3 (k = 4, with `--reference_starts 100`).
+k >= 3 (for k = 2 it is the exact closed form). On the plot the filled circles and vertical lines are the stopping
+times of the methods (`L` at our threshold, `L_naive` at the naive threshold), the open circles where each bound
+crosses the other threshold. With 8 cores it takes about 1 min for instance 2 (k = 3) and 5 min for instance 3
+(k = 4, with `--reference_starts 100`).
 
 ### Expected runtimes
 
