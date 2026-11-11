@@ -34,8 +34,12 @@ class MuSTS(TS):
         
         self.c1.value = w_star * A_star
         self.c2.value = w_s * A_s
-        self.projection.solve()
-        
+        try:
+            self.projection.solve()
+        except cp.error.SolverError:
+            # rare (once in the 10^6 rounds of instances 168 and 208), handled like a failed status
+            return 0.0, "solver_error", None, None
+
         xlogx = lambda P: np.sum(P[P > 0] * np.log(P[P > 0]))
         value = self.projection.value + w_star * xlogx(A_star) + w_s * xlogx(A_s)
         return max(value, 0), self.projection.status, self.B1.value, self.B2.value
