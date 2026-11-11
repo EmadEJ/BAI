@@ -18,7 +18,7 @@ from environment import ALGORITHMS
 FIG_DIR = "figures/"
 FIG2_INSTANCES = [2, 3]  # k = 3, 4
 FIG3_INSTANCES = {4: "Instance (16)", 5: "Instance (17)"}
-FIG5_N, FIG5_K = [3, 6, 9, 12], [2, 3, 4]  # instance index is 10 n + k
+FIG5_N, FIG5_K = [4, 8, 12, 16, 20], [2, 4, 6, 8]  # instance index is 10 n + k
 FIG5_INSTANCES = [10 * n + k for n in FIG5_N for k in FIG5_K]
 DELTA_DIR = "results/delta_correctness/"
 
@@ -202,7 +202,7 @@ def fig3():
 
 def fig5():
     # one row per n and one column per k
-    fig, axes = plt.subplots(len(FIG5_N), len(FIG5_K), figsize=(DOUBLE, 7.2))
+    fig, axes = plt.subplots(len(FIG5_N), len(FIG5_K), figsize=(DOUBLE, 8.6))
     for r, n in enumerate(FIG5_N):
         for c, k in enumerate(FIG5_K):
             ax = axes[r, c]
@@ -210,7 +210,7 @@ def fig5():
             ax.set_title(f"$n={n},\\ k={k}$")
     for ax in axes[:, 0]:
         ax.set_ylabel("Sample complexity")
-    fig.tight_layout(rect=(0, 0.035, 1, 1))
+    fig.tight_layout(rect=(0, 0.03, 1, 1))
     algorithm_legend(fig)
     save(fig, "fig5_sample_complexity")
 

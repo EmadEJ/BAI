@@ -6,4 +6,4 @@
 
 module load gcc python
 source .venv/bin/activate
-python -u simulate.py --instance_index 32 33 34 62 63 64 92 93 94 122 123 124 --runs 20 --jobs $SLURM_CPUS_PER_TASK "$@"
+python -u simulate.py --instance_index 42 44 46 48 82 84 86 88 122 124 126 128 162 164 166 168 202 204 206 208 --runs 20 --jobs $SLURM_CPUS_PER_TASK "$@"

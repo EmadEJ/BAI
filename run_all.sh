@@ -38,7 +38,7 @@ if wants delta; then
     run_simulations "7 8" 200 "--delta 0.1 --out_dir results/delta_correctness/" delta
 fi
 if wants fig5; then
-    run_simulations "32 33 34 62 63 64 92 93 94 122 123 124" 20 "" fig5
+    run_simulations "42 44 46 48 82 84 86 88 122 124 126 128 162 164 166 168 202 204 206 208" 20 "" fig5
 fi
 $PYTHON plot.py all > logs/plot.log 2>&1
 echo "$(date '+%F %T') done"

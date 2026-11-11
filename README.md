@@ -26,12 +26,15 @@ arm, with the probabilities of the k contexts (the transpose of the k x n matrix
 | 5 | 3, 2, 1e-3 | eq. (17), figure 3 |
 | 6 | 3, 3, 1e-3 | eq. (42), figure 4 |
 | 7, 8 | 3, 2, 1e-3 | delta-correctness check (run with delta = 0.1), easier versions of instances 4 and 5 |
-| 10 n + k | n, k, 1e-3 | figure 5: 32, 33, 34, 62, 63, 64, 92, 93, 94, 122, 123, 124 |
+| 10 n + k | n, k, 1e-3 | figure 5, n in {4, 8, 12, 16, 20} and k in {2, 4, 6, 8}: 42, 44, ..., 206, 208 |
+| 32, 33, 34, 62, 63, 64, 92, 93, 94, 123 | n, k, 1e-3 | the earlier figure 5 (n in {3, 6, 9, 12}, k in {2, 3, 4}), not used anymore |
 
 The values of instances 0 to 8 have at most 2 decimals. Instances 2, 3, 4, 5 and 6 are also the main instances of the
 bound tightness table. The figure 5 instances have the rows of `A` drawn by `utils.context_initiator(n, k, "random")`
-and `mus` uniform in [0, 1] (instance 124 with `np.random.seed(2)`), and `io_utils.add_instance_to_json` writes a new
-instance file.
+and `mus` uniform in [0, 1]. Instances 122 and 124 come from the earlier figure 5 (124 with `np.random.seed(2)`). For the
+others we took the first `np.random.seed(s)`, s = 0, 1, ..., for which the two best arms are at least 0.05 apart and
+every entry of `A` is at least 0.005 (so that the initial exploration, which waits for every arm-context pair, stays
+short). `io_utils.add_instance_to_json` writes a new instance file.
 
 ## The code
 
@@ -82,7 +85,7 @@ Single experiments (without arguments, `simulate.py`, `glr_trace.py` and `heatma
 ```bash
 python simulate.py                                                  # one run of GTS-Unknown (ours) on instance 0
 python simulate.py --algorithm STS-LB --instance_index 4 --runs 100 --jobs 8
-python simulate.py --algorithm ASTS SGTS --instance_index 32 33 --runs 20 --jobs 8
+python simulate.py --algorithm ASTS SGTS --instance_index 42 44 --runs 20 --jobs 8
 python simulate.py --algorithm ASTS --instance_index 7 --runs 200 --delta 0.1 --out_dir results/delta_correctness/ --jobs 8
 python glr_trace.py --instance_index 2 --log_period 50 --jobs 8
 python heatmaps.py --instance_index 6 --div 61 --jobs 8
@@ -125,16 +128,18 @@ has the measured time of every stored run.
 
 | algorithm | time per run | |
 |---|---|---|
-| `ASTS`, `SGTS`, `STS-LB`, `STS-LB-Naive` | 1 s to 1.5 min (seconds for `STS-LB` with k = 2) | negligible |
-| `MuSTS` | 0.5 to 8 min | |
+| `ASTS`, `SGTS`, `STS-LB`, `STS-LB-Naive` | 1 s to 13 min (`STS-LB` on instance 208; seconds for `STS-LB` with k = 2) | |
+| `MuSTS` | 0.5 min to 1.5 h (instance 208) | almost all of it is the stopping rule: n - 1 convex programs per round |
 | `STS-Plain`, k = 2 | seconds (closed-form GLR) | |
 | `STS-Plain`, k >= 3 | 35 min (instance 33) to about 4 h (instance 124) | 97% of it is the optimization of `w` |
 
-| experiment | CPU-hours (`run_all.sh`, without `STS-Plain`) | `STS-Plain` alone |
+| experiment | server CPU-hours (`run_all.sh`, without `STS-Plain`) | `STS-Plain` alone |
 |---|---|---|
 | `fig3` (100 runs) | about 4 | below 1 |
 | `delta` (200 runs, 2 instances) | about 3 | below 1 |
-| `fig5` (20 runs) | about 25 (17 of it `MuSTS`) | about 490 |
+| `fig5` (20 runs) | about 375 (305 of it `MuSTS`, 3.7 h per run on instance 208) | not measured |
+
+With 72 cores `fig5` takes about 5 to 6.5 h: the `MuSTS` runs of the largest instances start first and set the end.
 
 ## Results
 
